@@ -91,6 +91,7 @@ extern int sys_fork(void);
 extern int sys_fstat(void);
 extern int sys_getpgdirinfo(void); // TODO: implement
 extern int sys_getpid(void);
+extern int sys_getwmapinfo(void); // TODO: implement
 extern int sys_kill(void);
 extern int sys_link(void);
 extern int sys_mkdir(void);
@@ -103,7 +104,6 @@ extern int sys_sleep(void);
 extern int sys_unlink(void);
 extern int sys_wait(void);
 extern uint sys_wmap(void); // TODO: implement
-extern int sys_wmapinfo(void); // TODO: implement
 extern uint sys_wremap(void); // TODO: implement
 extern int sys_write(void);
 extern int sys_wunmap(void); // TODO: implement
@@ -135,7 +135,7 @@ static int (*syscalls[])(void) = {
 [SYS_wunmap]        sys_wunmap,
 [SYS_wremap]        sys_wremap,
 [SYS_getpgdirinfo]  sys_getpgdirinfo,
-[SYS_wmapinfo]      sys_wmapinfo,
+[SYS_getwmapinfo]   sys_getwmapinfo,
 };
 
 void
