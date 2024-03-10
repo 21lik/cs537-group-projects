@@ -49,6 +49,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct mmap_entry *mmaps; // Pointer to the list of memory mappings
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -56,3 +57,14 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+
+struct mmap_entry {
+    uint addr;          // Starting virtual address of the mapping
+    uint length;        // Length of the mapping
+    int flags;          // Flags that were passed to wmap
+    struct file *file;  // Backing file, if any
+    struct mmap_entry *next; // Next entry in the linked list
+};
+
+#define MAX_MMAPS 16 // Maximum number of memory maps per process

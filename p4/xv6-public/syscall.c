@@ -103,8 +103,8 @@ extern int sys_sbrk(void);
 extern int sys_sleep(void);
 extern int sys_unlink(void);
 extern int sys_wait(void);
-extern uint sys_wmap(void); // TODO: implement
-extern uint sys_wremap(void); // TODO: implement
+extern int sys_wmap(void); // TODO: implement
+extern int sys_wremap(void); // TODO: implement
 extern int sys_write(void);
 extern int sys_wunmap(void); // TODO: implement
 extern int sys_uptime(void);
