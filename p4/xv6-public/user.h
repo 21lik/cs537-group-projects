@@ -2,6 +2,7 @@ struct stat;
 struct rtcdate;
 struct pgdirinfo;
 struct wmapinfo;
+
 // system calls
 int fork(void);
 int exit(void) __attribute__((noreturn));
