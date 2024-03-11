@@ -59,15 +59,15 @@ objdump -t kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > kernel.sym
 dd if=/dev/zero of=xv6.img count=10000
 10000+0 records in
 10000+0 records out
-5120000 bytes (5.1 MB, 4.9 MiB) copied, 0.00989551 s, 517 MB/s
+5120000 bytes (5.1 MB, 4.9 MiB) copied, 0.0101222 s, 506 MB/s
 dd if=bootblock of=xv6.img conv=notrunc
 1+0 records in
 1+0 records out
-512 bytes copied, 4.3074e-05 s, 11.9 MB/s
+512 bytes copied, 0.000113766 s, 4.5 MB/s
 dd if=kernel of=xv6.img seek=1 conv=notrunc
-416+1 records in
-416+1 records out
-213000 bytes (213 kB, 208 KiB) copied, 0.000286817 s, 743 MB/s
+417+1 records in
+417+1 records out
+213820 bytes (214 kB, 209 KiB) copied, 0.00031098 s, 688 MB/s
 gcc -Werror -Wall -o mkfs mkfs.c
 gcc -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -fno-stack-protector -fno-pie -no-pie   -c -o ulib.o ulib.c
 gcc -m32 -gdwarf-2 -Wa,-divide   -c -o usys.o usys.S
@@ -143,20 +143,20 @@ balloc: write bitmap block at sector 58
 test build PASSED
  (build xv6 using make)
 
-starting test_4
+starting test_14
 
 **********************************************************************
 
-Test test_4
-Places one anonymous map at a fixed address.
+Test test_14
+Places one anonymous map at a fixed address and unmaps it.
 
 **********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_4.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
+Running xv6 user progam /home/cs537-1/tests/P4/3_wunmap_tests/test_14.c
+DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmp0wfjs49z/p/Makefile', '/tmp/tmp0wfjs49z/p/Makefile.test']
 Trying to build project using make
 make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
+/tmp/tmp0wfjs49z/p/Makefile
+/tmp/tmp0wfjs49z/p/Makefile.test
 make: 'xv6.img' is up to date.
 make: 'fs.img' is up to date.
 make qemu-nox CPUS=1
@@ -166,7 +166,7 @@ objdump -S _tester > tester.asm
 objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
 ./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
 nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 681 blocks have been allocated
+balloc: first 682 blocks have been allocated
 balloc: write bitmap block at sector 58
 qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
 c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
@@ -184,30 +184,30 @@ $ tester
 tester
 
 
-TEST_4
+TEST_14
 Initially 0 maps. 	Okay.
 Map 1 at 0x60021000 with length 4104. 	Okay.
+Map 1 unmapped. 	Okay.
 
 WMMAP	 SUCCESS
 
+test test_14 PASSED (1 of 1)
+ (Places one anonymous map at a fixed address and unmaps it.)
 
-test test_4 PASSED (1 of 1)
- (Places one anonymous map at a fixed address.)
-
-starting test_5
-
-**********************************************************************
-
-Test test_5
-Places one anonymous map at a NOT-fixed address.
+starting test_15
 
 **********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_5.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
+
+Test test_15
+Places one anonymous map at a NOT-fixed address and unmaps it.
+
+**********************************************************************
+Running xv6 user progam /home/cs537-1/tests/P4/3_wunmap_tests/test_15.c
+DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmp0wfjs49z/p/Makefile', '/tmp/tmp0wfjs49z/p/Makefile.test']
 Trying to build project using make
 make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
+/tmp/tmp0wfjs49z/p/Makefile
+/tmp/tmp0wfjs49z/p/Makefile.test
 make: 'xv6.img' is up to date.
 make: 'fs.img' is up to date.
 make qemu-nox CPUS=1
@@ -217,7 +217,7 @@ objdump -S _tester > tester.asm
 objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
 ./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
 nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 681 blocks have been allocated
+balloc: first 682 blocks have been allocated
 balloc: write bitmap block at sector 58
 qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
 c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
@@ -235,135 +235,32 @@ $ tester
 tester
 
 
-TEST_5
+TEST_15
 Initially 0 maps. 	Okay.
 Map 1 at 0x60000000 with length 4104. 	Okay.
-
-WMMAP	 SUCCESS
-
-test test_5 PASSED (1 of 1)
- (Places one anonymous map at a NOT-fixed address.)
-
-starting test_6
-
-**********************************************************************
-
-Test test_6
-Places one filebacked map at a fixed address.
-
-**********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_6.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
-Trying to build project using make
-make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
-make: 'xv6.img' is up to date.
-make: 'fs.img' is up to date.
-make qemu-nox CPUS=1
-gcc -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -fno-stack-protector -fno-pie -no-pie   -c -o tester.o tester.c
-ld -m    elf_i386 -N -e main -Ttext 0 -o _tester tester.o ulib.o usys.o printf.o umalloc.o
-objdump -S _tester > tester.asm
-objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
-./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
-nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 684 blocks have been allocated
-balloc: write bitmap block at sector 58
-qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
-c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1FF8B4A0+1FECB4A0 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk..xv6...
-cpu0: starting 0
-sb: size 1000 nblocks 941 ninodes 200 nlog 30 logstart 2 inodestart 32 bmap start 58
-init: starting sh
-$ tester
-tester
-
-
-TEST_6
-Initially 0 maps. 	Okay.
-Map 1 at 0x60021000 with length 513. 	Okay.
+Map 1 unmapped. 	Okay.
 
 WMMAP	 SUCCESS
 
 
-test test_6 PASSED (1 of 1)
- (Places one filebacked map at a fixed address.)
 
-starting test_7
+test test_15 PASSED (1 of 1)
+ (Places one anonymous map at a NOT-fixed address and unmaps it.)
 
-**********************************************************************
-
-Test test_7
-Places multiple maps at different addresses.
+starting test_16
 
 **********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_7.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
+
+Test test_16
+Places one filebacked map at a fixed address and unmaps it.
+
+**********************************************************************
+Running xv6 user progam /home/cs537-1/tests/P4/3_wunmap_tests/test_16.c
+DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmp0wfjs49z/p/Makefile', '/tmp/tmp0wfjs49z/p/Makefile.test']
 Trying to build project using make
 make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
-make: 'xv6.img' is up to date.
-make: 'fs.img' is up to date.
-make qemu-nox CPUS=1
-gcc -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -fno-stack-protector -fno-pie -no-pie   -c -o tester.o tester.c
-ld -m    elf_i386 -N -e main -Ttext 0 -o _tester tester.o ulib.o usys.o printf.o umalloc.o
-objdump -S _tester > tester.asm
-objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
-./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
-nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 688 blocks have been allocated
-balloc: write bitmap block at sector 58
-qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
-c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1FF8B4A0+1FECB4A0 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk..xv6...
-cpu0: starting 0
-sb: size 1000 nblocks 941 ninodes 200 nlog 30 logstart 2 inodestart 32 bmap start 58
-init: starting sh
-$ tester
-tester
-
-
-TEST_7
-Initially 0 maps. 	Okay.
-Map 1 at 0x60021000 with length 513. 	Okay.
-Map 2 at 0x60022000 with length 8200. 	Okay.
-Map 3 did not exist. 	Okay.
-Map 4 at 0x60000000 with length 16392. 	Okay.
-Map 1, Map 2, Map 4 do not overlap with each other. 	Okay
-
-WMMAP	 SUCCESS
-
-
-test test_7 PASSED (1 of 1)
- (Places multiple maps at different addresses.)
-
-starting test_8
-
-**********************************************************************
-
-Test test_8
-Places a large number of anonymous maps at fixed and non-fixed addresses
-
-**********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_8.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
-Trying to build project using make
-make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
+/tmp/tmp0wfjs49z/p/Makefile
+/tmp/tmp0wfjs49z/p/Makefile.test
 make: 'xv6.img' is up to date.
 make: 'fs.img' is up to date.
 make qemu-nox CPUS=1
@@ -391,42 +288,31 @@ $ tester
 tester
 
 
-TEST_8
-Maximum #allocatable pages: 131072
+TEST_16
 Initially 0 maps. 	Okay.
-Map 1 is placed at 0x60021000. 	Okay.
-Map 2 is placed at 0x601B2000. 	Okay.
-Map 3 is placed at 0x60984000. 	Okay.
-Map 4 is placed at 0x61926000. 	Okay.
-Map 5 is placed at 0x63098000. 	Okay.
-Map 6 is placed at 0x64FDA000. 	Okay.
-Map 7 is placed at 0x676EC000. 	Okay.
-Map 8 is placed at 0x60000000. 	Okay.
-Map 9 is placed at 0x60002000. 	Okay.
-Map 10 is placed at 0x60004000. 	Okay.
-Map 1 ~ 10 do not overlap with each other. 	Okay
-Validated wmapinfo. 	Okay.
+Map 1 at 0x60021000 with length 513. 	Okay.
+Map 1 unmapped. 	Okay.
 
 WMMAP	 SUCCESS
 
 
-test test_8 PASSED (1 of 1)
- (Places a large number of anonymous maps at fixed and non-fixed addresses)
+test test_16 PASSED (1 of 1)
+ (Places one filebacked map at a fixed address and unmaps it.)
 
-starting test_9
-
-**********************************************************************
-
-Test test_9
-access anonymous map (checks for memory allocation)
+starting test_17
 
 **********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_9.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
+
+Test test_17
+access anonymous map and unmap it
+
+**********************************************************************
+Running xv6 user progam /home/cs537-1/tests/P4/3_wunmap_tests/test_17.c
+DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmp0wfjs49z/p/Makefile', '/tmp/tmp0wfjs49z/p/Makefile.test']
 Trying to build project using make
 make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
+/tmp/tmp0wfjs49z/p/Makefile
+/tmp/tmp0wfjs49z/p/Makefile.test
 make: 'xv6.img' is up to date.
 make: 'fs.img' is up to date.
 make qemu-nox CPUS=1
@@ -436,7 +322,7 @@ objdump -S _tester > tester.asm
 objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
 ./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
 nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 687 blocks have been allocated
+balloc: first 688 blocks have been allocated
 balloc: write bitmap block at sector 58
 qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
 c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
@@ -454,71 +340,19 @@ $ tester
 tester
 
 
-TEST_9
+TEST_17
 Initially 0 maps. 	Okay.
 Map 1 at 0x60002000 with length 8193. 	Okay.
 Accessed all pages of Map 1. 	Okay.
-
-WMMAP	 SUCCESS
-
-
-
-test test_9 PASSED (1 of 1)
- (access anonymous map (checks for memory allocation))
-
-starting test_10
-
-**********************************************************************
-
-Test test_10
-access one big filebacked map (checks for memory allocation)
-
-**********************************************************************
-Running xv6 user progam /home/cs537-1/tests/P4/2_wmap_tests/test_10.c
-DEBUG: cmd = ['/home/cs537-1/tests/P4/edit-makefile.sh', '/tmp/tmpb8n1be_p/p/Makefile', '/tmp/tmpb8n1be_p/p/Makefile.test']
-Trying to build project using make
-make xv6.img fs.img
-/tmp/tmpb8n1be_p/p/Makefile
-/tmp/tmpb8n1be_p/p/Makefile.test
-make: 'xv6.img' is up to date.
-make: 'fs.img' is up to date.
-make qemu-nox CPUS=1
-gcc -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -fno-stack-protector -fno-pie -no-pie   -c -o tester.o tester.c
-ld -m    elf_i386 -N -e main -Ttext 0 -o _tester tester.o ulib.o usys.o printf.o umalloc.o
-objdump -S _tester > tester.asm
-objdump -t _tester | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$/d' > tester.sym
-./mkfs fs.img README _cat _echo _forktest _grep _init _kill _ln _ls _tester _mkdir _rm _sh _stressfs _usertests _wc _zombie 
-nmeta 59 (boot, super, log blocks 30 inode blocks 26, bitmap blocks 1) blocks 941 total 1000
-balloc: first 691 blocks have been allocated
-balloc: write bitmap block at sector 58
-qemu-system-i386 -nographic -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp 1 -m 512 
-c[?7l[2J[0mSeaBIOS (version 1.15.0-1)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1FF8B4A0+1FECB4A0 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk..xv6...
-cpu0: starting 0
-sb: size 1000 nblocks 941 ninodes 200 nlog 30 logstart 2 inodestart 32 bmap start 58
-init: starting sh
-$ tester
-tester
-
-
-TEST_10
-Initially 0 maps. 	Okay.
-Created file big.txt with length 20480. 	Okay.
-Placed map 1 at 0x60021000 with length 20480. 	Okay.
-Cause: expected a at 0x60021000, but found  
+Map 1 unmapped. 	Okay.
+Cause: expected Virt.Addr. 0x60002000 to not exist in the list of user pages
 
 WMMAP	 FAILED
 
 
 
-test test_10 FAILED (0 of 1)
- (access one big filebacked map (checks for memory allocation))
+test test_17 FAILED (0 of 1)
+ (access anonymous map and unmap it)
  tester failed
 
 Skipped 3 tests.
