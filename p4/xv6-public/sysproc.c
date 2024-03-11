@@ -18,7 +18,25 @@ sys_fork(void)
 int
 sys_exit(void)
 {
-  // TODO: remove all the mappings from the current process address space, here or in proc.c
+  // Remove all the mappings from the current process address space
+  struct proc *curproc = myproc();
+  struct mmap_entry **pme = &curproc->mmaps;
+  for (struct mmap_entry *me = *pme, *next; me != 0; me = next) {
+    kfree(me->addr);
+    me->addr = 0;
+    if (me->file != 0) {
+      // TODO: write to file as necessary, or use wunmap system call instead
+      fileclose(me->file); // TODO: will this be necessary?
+      me->file = 0;
+    }
+    me->flags = 0;
+    me->length = 0;
+    next = me->next;
+    me->next = 0;
+    kfree(me);
+  }
+
+  // Exit the process
   exit();
   return 0;  // not reached
 }
