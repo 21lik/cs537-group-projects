@@ -198,6 +198,37 @@ fork(void)
     np->state = UNUSED;
     return -1;
   }
+
+  // Copy memory mappings from parent to child
+  for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+    struct mmap_entry *newme = (struct mmap_entry *)kalloc();
+    if (newme == 0) {
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
+    }
+    memmove(newme, me, sizeof(struct mmap_entry));
+    
+    // If MAP_PRIVATE, mark the pages as copy-on-write
+    if (newme->flags & MAP_PRIVATE) {
+      char *vaddr = (char *)newme->addr;
+      for (uint i = 0; i < newme->length; i += PGSIZE) {
+        pte_t *pte = walkpgdir(np->pgdir, vaddr + i, 0);
+        if (!pte) {
+          kfree(np->kstack);
+          np->kstack = 0;
+          np->state = UNUSED;
+          return -1;
+        }
+        *pte &= ~PTE_W; // Mark the page as read-only
+      }
+    }
+    
+    newme->next = np->mmaps;
+    np->mmaps = newme;
+  }
+
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -222,6 +253,7 @@ fork(void)
 
   return pid;
 }
+
 
 
 // Exit the current process.  Does not return.
@@ -295,6 +327,7 @@ exit(void) {
   sched();
   panic("zombie exit");
 }
+
 
 
 // Wait for a child process to exit and return its pid.

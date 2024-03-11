@@ -95,7 +95,7 @@ sys_uptime(void)
 
 // Map memory in the process's virtual address space to some physical memory,
 // similar to mmap.
-uint 
+uint
 sys_wmap(void) {
     uint addr;
     int length, flags, fd;
@@ -170,15 +170,24 @@ sys_wmap(void) {
     me->allocated = 0;  // Indicates that physical memory is not yet allocated
     me->n_loaded_pages = 0;
     me->file = f;       // Associate the file with the mapping
+
+    // If MAP_PRIVATE, mark the pages as copy-on-write
+    if (flags & MAP_PRIVATE) {
+        char *vaddr = (char *)me->addr;
+        for (uint i = 0; i < me->length; i += PGSIZE) {
+            pte_t *pte = walkpgdir(curproc->pgdir, vaddr + i, 0);
+            *pte &= ~PTE_W; // Mark the page as read-only
+        }
+    }
+
+    // Add the new memory map entry to the process's list
     me->next = curproc->mmaps;
     curproc->mmaps = me;
 
     return addr;
 }
 
-
-// Unmap memory from the process's virtual address space.
-int 
+int
 sys_wunmap(void) {
     uint addr;
 
@@ -191,24 +200,52 @@ sys_wunmap(void) {
     while (*pme != 0) {
         struct mmap_entry *me = *pme;
         if (me->addr == addr) {
-            // If it's file-backed and shared, write back the changes
-            if (me->file && (me->flags & MAP_SHARED)) {
-                filewrite(me->file, (char *)me->addr, me->length);
+            if (me->flags & MAP_PRIVATE) {
+                // For MAP_PRIVATE, simply invalidate PTEs
+                for (uint i = 0; i < me->length; i += PGSIZE) {
+                    char *vaddr = (char *)(me->addr + i);
+                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+                    if (pte && (*pte & PTE_P)) {
+                        // Clear the PTE
+                        *pte = 0;
+                    }
+                }
+            } else if (me->flags & MAP_SHARED) {
+                // For shared mappings, invalidate PTEs and close the file
+                for (uint i = 0; i < me->length; i += PGSIZE) {
+                    char *vaddr = (char *)(me->addr + i);
+                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+                    if (pte && (*pte & PTE_P)) {
+                        if ((*pte & PTE_W)) {
+                            // Page is dirty, write back to file
+                            filewrite(me->file, vaddr, PGSIZE);
+                            *pte &= ~PTE_W; // Clear the writable bit
+                        }
+                        // Clear the PTE
+                        *pte = 0;
+                    }
+                }
+                // Close the file descriptor associated with the mapping
+                if (me->file) {
+                    fileclose(me->file);
+                }
             }
 
-            // Continue with unmapping...
-
+            // Remove the mapping from the process's list
             *pme = me->next;
-            if (me->file) fileclose(me->file);
             kfree((char *)me);
+
+            // Invalidate the TLB
+            lcr3(V2P(curproc->pgdir));
+
             return SUCCESS;
         }
         pme = &me->next;
     }
 
+    // Mapping not found
     return FAILED;
 }
-
 
 // Resize an existing mapping.
 int
@@ -252,35 +289,42 @@ sys_getwmapinfo(void) {
 
 
 // Retrieve information about the physical pages in the process address space.
-int 
-sys_getpgdirinfo(void) {
-  struct pgdirinfo *pdinfo;
+int sys_getpgdirinfo(void) {
+    struct pgdirinfo *pdinfo;
 
-  if (argptr(0, (void *)&pdinfo, sizeof(*pdinfo)) < 0)
-    return FAILED;
+    // Retrieve the pointer to pgdirinfo struct from the user space
+    if (argptr(0, (void *)&pdinfo, sizeof(*pdinfo)) < 0)
+        return FAILED;
 
-  struct proc *curproc = myproc();
-  pde_t *pgdir = curproc->pgdir;
-  uint n = 0;
+    struct proc *curproc = myproc();
+    pde_t *pgdir = curproc->pgdir;
+    uint n = 0;
 
-  for (uint i = 0; i < NPDENTRIES && n < MAX_UPAGE_INFO; i++) {
-    pde_t pde = pgdir[i];
-    if (pde & PTE_P) {
-      pte_t *pgtab = (pte_t*)P2V(PTE_ADDR(pde));
-      for (uint j = 0; j < NPTENTRIES && n < MAX_UPAGE_INFO; j++) {
-        pte_t pte = pgtab[j];
-        if (pte & PTE_P && pte & PTE_U) {
-          pdinfo->va[n] = (i << PDXSHIFT) | (j << PTXSHIFT);
-          pdinfo->pa[n] = PTE_ADDR(pte) | (pte & 0xFFF);  // Include the offset within the page
-          n++;
+    // Iterate through page directory entries
+    for (uint i = 0; i < NPDENTRIES && n < MAX_UPAGE_INFO; i++) {
+        pde_t pde = pgdir[i];
+        // Check if page directory entry is present
+        if (pde & PTE_P) {
+            pte_t *pgtab = (pte_t *)P2V(PTE_ADDR(pde));
+            // Iterate through page table entries
+            for (uint j = 0; j < NPTENTRIES && n < MAX_UPAGE_INFO; j++) {
+                pte_t pte = pgtab[j];
+                // Check if page table entry is present and user accessible
+                if (pte & PTE_P && pte & PTE_U) {
+                    // Calculate virtual address and physical address
+                    pdinfo->va[n] = (i << PDXSHIFT) | (j << PTXSHIFT);
+                    pdinfo->pa[n] = PTE_ADDR(pte) | (pte & 0xFFF); // Include the offset within the page
+                    n++;
+                }
+            }
         }
-      }
     }
-  }
 
-  pdinfo->n_upages = n;
-  return SUCCESS;
+    // Store the number of user pages
+    pdinfo->n_upages = n;
+    return SUCCESS;
 }
+
 
 
 
