@@ -63,6 +63,7 @@ struct mmap_entry {
     uint addr;               // Starting virtual address of the mapping
     uint length;             // Length of the mapping
     int flags;               // Flags that were passed to wmap
+    int allocated;           // 1 if allocated (via lazy allocation), 0 otherwise
     struct file *file;       // Backing file, if any
     struct mmap_entry *next; // Next entry in the linked list
 };

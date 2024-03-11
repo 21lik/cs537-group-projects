@@ -22,7 +22,10 @@ sys_exit(void)
   struct proc *curproc = myproc();
   struct mmap_entry **pme = &curproc->mmaps;
   for (struct mmap_entry *me = *pme, *next; me != 0; me = next) {
-    kfree(me->addr);
+    if (me->allocated) {
+      kfree(me->addr);
+      me->allocated = 0;
+    }
     me->addr = 0;
     if (me->file != 0) {
       // TODO: write to file as necessary, or use wunmap system call instead
@@ -183,6 +186,7 @@ sys_wmap(void) {
     me->addr = addr;
     me->length = length;
     me->flags = flags;
+    me->allocated = 0;
     me->file = f;
     me->next = curproc->mmaps;
     curproc->mmaps = me;
@@ -211,6 +215,9 @@ sys_wunmap(void) {
     struct mmap_entry *me = *pme;
     if (me->addr == addr) {
       *pme = me->next;
+      if (me->allocated) {
+        // TODO: deallocate the memory, one page at a time
+      }
       kfree((char *)me);
       return SUCCESS;
     }

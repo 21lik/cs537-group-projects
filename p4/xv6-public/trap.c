@@ -78,15 +78,29 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   // TODO: implement case T_PGFLT... (below)
-  /*
   case T_PGFLT: // T_PGFLT = 14
-    if page fault addr is part of a mapping: // lazy allocation
-      handle it
-    else:
+    struct proc *curproc = myproc();
+    struct mmap_entry **pme = &curproc->mmaps;
+    // Check if page fault address is part of a mapping
+    int pgflt_addr = 0; // TODO: get page fault address (probably a register in tf)
+    int found_page = 0;
+    for (struct mmap_entry *me = *pme; me != 0; me = me->next) {
+      if (pgflt_addr >= me->addr && pgflt_addr < me->addr + me->length) {
+        // Lazy Allocation
+        found_page = 1;
+        for (uint i = 0; i < me->length; i += PGSIZE) {
+          char *mem = kalloc();
+          mappages(curproc->pgdir, pgflt_addr + i, PGSIZE, V2P(mem), PTE_W | PTE_U);
+        }
+        break;
+      }
+    }
+    // Segmentation fault if address is not part of a mapping
+    if (!found_page) {
       cprintf("Segmentation Fault\n");
-      kill the process
+      myproc()->killed = 1;
+    }
     break;
-  */
 
   //PAGEBREAK: 13
   default:
