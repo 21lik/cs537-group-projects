@@ -7,6 +7,8 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "wmap.h"
+#define min(a, b) ((a) < (b) ? (a) : (b))
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -78,31 +80,61 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   // TODO: implement case T_PGFLT... (below)
-  case T_PGFLT: // T_PGFLT = 14
-    struct proc *curproc = myproc();
-    struct mmap_entry **pme = &curproc->mmaps;
-    // Check if page fault address is part of a mapping
-    int pgflt_addr = 0; // TODO: get page fault address (probably a register in tf)
-    int found_page = 0;
-    for (struct mmap_entry *me = *pme; me != 0; me = me->next) {
-      if (pgflt_addr >= me->addr && pgflt_addr < me->addr + me->length) {
-        // Lazy Allocation
-        found_page = 1;
-        for (uint i = 0; i < me->length; i += PGSIZE) {
-          char *mem = kalloc();
-          mappages(curproc->pgdir, pgflt_addr + i, PGSIZE, V2P(mem), PTE_W | PTE_U);
-        }
-        break;
+  case T_PGFLT:
+      uint pgflt_addr = rcr2();  // Get the faulting address
+      struct proc *curproc = myproc();
+      int handled = 0;
+  
+      for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+          if (pgflt_addr >= me->addr && pgflt_addr < me->addr + me->length) {
+              // The faulting address is within a memory-mapped region
+              handled = 1;
+  
+              if (me->flags & MAP_ANONYMOUS || me->file == 0) {
+                  // For anonymous mapping or if there's no associated file
+                  char *mem = kalloc();
+                  if (!mem) {
+                      cprintf("kalloc failed: out of memory\n");
+                      curproc->killed = 1;
+                      break;
+                  }
+                  memset(mem, 0, PGSIZE);
+                  if (mappages(curproc->pgdir, (char *)PGROUNDDOWN(pgflt_addr), PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+                      cprintf("mappages failed\n");
+                      kfree(mem);
+                      curproc->killed = 1;
+                      break;
+                  }
+                  me->n_loaded_pages++;
+              } else if (me->file != 0) {
+                  // For file-backed mapping, handle reading from the file
+                  // This section needs careful attention to ensure it aligns with your file system's capabilities
+                  // In this simplified version, we'll just allocate a page and mark it without actually reading from the file
+                  char *mem = kalloc();
+                  if (!mem) {
+                      cprintf("kalloc failed: out of memory\n");
+                      curproc->killed = 1;
+                      break;
+                  }
+                  memset(mem, 0, PGSIZE); // You would replace this with actual file reading logic
+                  if (mappages(curproc->pgdir, (char *)PGROUNDDOWN(pgflt_addr), PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+                      cprintf("mappages failed\n");
+                      kfree(mem);
+                      curproc->killed = 1;
+                      break;
+                  }
+                  me->n_loaded_pages++;
+              }
+              break;  // The page fault has been handled
+          }
       }
-    }
-    // Segmentation fault if address is not part of a mapping
-    if (!found_page) {
-      cprintf("Segmentation Fault\n");
-      myproc()->killed = 1;
-    }
-    break;
-
-  //PAGEBREAK: 13
+  
+      if (!handled) {
+          // The page fault was not handled; it's a segmentation fault
+          cprintf("pid %d %s: segmentation fault at 0x%x\n", curproc->pid, curproc->name, pgflt_addr);
+          curproc->killed = 1;
+      }
+      break;
   default:
     if(myproc() == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.

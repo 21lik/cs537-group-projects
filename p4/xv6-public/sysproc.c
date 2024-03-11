@@ -18,27 +18,6 @@ sys_fork(void)
 int
 sys_exit(void)
 {
-  // Remove all the mappings from the current process address space
-  struct proc *curproc = myproc();
-  struct mmap_entry **pme = &curproc->mmaps;
-  for (struct mmap_entry *me = *pme, *next; me != 0; me = next) {
-    if (me->allocated) {
-      kfree(me->addr);
-      me->allocated = 0;
-    }
-    me->addr = 0;
-    if (me->file != 0) {
-      // TODO: write to file as necessary, or use wunmap system call instead
-      fileclose(me->file); // TODO: will this be necessary?
-      me->file = 0;
-    }
-    me->flags = 0;
-    me->length = 0;
-    next = me->next;
-    me->next = 0;
-    kfree(me);
-  }
-
   // Exit the process
   exit();
   return 0;  // not reached
@@ -121,51 +100,51 @@ sys_wmap(void) {
     uint addr;
     int length, flags, fd;
 
+    // Retrieve arguments
     if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
         return FAILED;
 
+    // Retrieve the file descriptor if the mapping is not anonymous
     if (!(flags & MAP_ANONYMOUS) && argint(3, &fd) < 0)
         return FAILED;
 
     struct proc *curproc = myproc();
     struct file *f = 0;
 
+    // If not anonymous, validate and retrieve the file structure
     if (!(flags & MAP_ANONYMOUS)) {
         if (fd < 0 || fd >= NOFILE || (f = curproc->ofile[fd]) == 0)
             return FAILED;
-        filedup(f);
+        filedup(f);  // Increase the file's reference count
     }
 
+    // Handle non-fixed mappings by searching for a suitable address
     if (!(flags & MAP_FIXED)) {
-        // For non-fixed mappings, find a suitable address
-        addr = 0x60000000; // Start the search from this address
+        addr = 0x60000000; // Start from this address
         while (1) {
             int fit = 1;
             for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
                 if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
-                    // Found an overlap, adjust addr and recheck
                     addr = PGROUNDUP(me->addr + me->length);
                     fit = 0;
                     break;
                 }
             }
             if (fit || addr + length > 0x80000000) {
-                break; // Found a fit or reached address space limit
+                break;  // Suitable space found or reached address space limit
             }
         }
 
         if (addr + length > 0x80000000) {
-            // No suitable address found within the address space
             if (f) {
                 fileclose(f);
             }
-            return FAILED;
+            return FAILED;  // No suitable address found
         }
     } else {
-        // For MAP_FIXED, ensure the requested address doesn't overlap existing mappings
+        // Ensure the requested address doesn't overlap existing mappings (for MAP_FIXED)
         for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
             if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
-                // Found an overlap with MAP_FIXED
                 if (f) {
                     fileclose(f);
                 }
@@ -174,6 +153,7 @@ sys_wmap(void) {
         }
     }
 
+    // Create a new memory map entry
     struct mmap_entry *me = (struct mmap_entry *)kalloc();
     if (me == 0) {
         if (f) {
@@ -182,50 +162,53 @@ sys_wmap(void) {
         return FAILED;
     }
 
+    // Initialize the memory map entry
     memset(me, 0, sizeof(struct mmap_entry));
     me->addr = addr;
     me->length = length;
     me->flags = flags;
-    me->allocated = 0;
-    me->file = f;
+    me->allocated = 0;  // Indicates that physical memory is not yet allocated
+    me->n_loaded_pages = 0;
+    me->file = f;       // Associate the file with the mapping
     me->next = curproc->mmaps;
     curproc->mmaps = me;
 
     return addr;
 }
 
+
 // Unmap memory from the process's virtual address space.
-int
+int 
 sys_wunmap(void) {
-  uint addr;
+    uint addr;
 
-  // Get system call argument, ensure it is valid
-  if (argint(0, (int *)&addr) < 0)
-    return FAILED;
+    if (argint(0, (int *)&addr) < 0)
+        return FAILED;
 
-  // Check address is page aligned
-  if (addr % PGSIZE != 0)
-    return FAILED;
+    struct proc *curproc = myproc();
+    struct mmap_entry **pme = &curproc->mmaps;
 
-  // Unmap the physical pages
-  struct proc *curproc = myproc();
-  struct mmap_entry **pme = &curproc->mmaps;
+    while (*pme != 0) {
+        struct mmap_entry *me = *pme;
+        if (me->addr == addr) {
+            // If it's file-backed and shared, write back the changes
+            if (me->file && (me->flags & MAP_SHARED)) {
+                filewrite(me->file, (char *)me->addr, me->length);
+            }
 
-  while (*pme != 0) {
-    struct mmap_entry *me = *pme;
-    if (me->addr == addr) {
-      *pme = me->next;
-      if (me->allocated) {
-        // TODO: deallocate the memory, one page at a time
-      }
-      kfree((char *)me);
-      return SUCCESS;
+            // Continue with unmapping...
+
+            *pme = me->next;
+            if (me->file) fileclose(me->file);
+            kfree((char *)me);
+            return SUCCESS;
+        }
+        pme = &me->next;
     }
-    pme = &me->next;
-  }
 
-  return FAILED;
+    return FAILED;
 }
+
 
 // Resize an existing mapping.
 int
@@ -244,11 +227,10 @@ sys_wremap(void)
 }
 
 // Retrieve information about the memory maps in the process address space.
-int
+int 
 sys_getwmapinfo(void) {
   struct wmapinfo *wminfo;
 
-  // Get system call argument, ensure it is valid
   if (argptr(0, (void *)&wminfo, sizeof(*wminfo)) < 0)
     return FAILED;
 
@@ -259,7 +241,7 @@ sys_getwmapinfo(void) {
   for (; me != 0 && count < MAX_WMMAP_INFO; me = me->next) {
     wminfo->addr[count] = me->addr;
     wminfo->length[count] = me->length;
-    wminfo->n_loaded_pages[count] = 0;
+    wminfo->n_loaded_pages[count] = me->n_loaded_pages;  // Reflect actual loaded pages
     count++;
   }
 
@@ -267,12 +249,13 @@ sys_getwmapinfo(void) {
   return SUCCESS;
 }
 
+
+
 // Retrieve information about the physical pages in the process address space.
-int
+int 
 sys_getpgdirinfo(void) {
   struct pgdirinfo *pdinfo;
 
-  // Get system call argument, ensure it is valid
   if (argptr(0, (void *)&pdinfo, sizeof(*pdinfo)) < 0)
     return FAILED;
 
@@ -288,7 +271,7 @@ sys_getpgdirinfo(void) {
         pte_t pte = pgtab[j];
         if (pte & PTE_P && pte & PTE_U) {
           pdinfo->va[n] = (i << PDXSHIFT) | (j << PTXSHIFT);
-          pdinfo->pa[n] = PTE_ADDR(pte);
+          pdinfo->pa[n] = PTE_ADDR(pte) | (pte & 0xFFF);  // Include the offset within the page
           n++;
         }
       }
@@ -298,5 +281,6 @@ sys_getpgdirinfo(void) {
   pdinfo->n_upages = n;
   return SUCCESS;
 }
+
 
 

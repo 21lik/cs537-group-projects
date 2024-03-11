@@ -64,6 +64,7 @@ struct mmap_entry {
     uint length;             // Length of the mapping
     int flags;               // Flags that were passed to wmap
     int allocated;           // 1 if allocated (via lazy allocation), 0 otherwise
+    int n_loaded_pages;
     struct file *file;       // Backing file, if any
     struct mmap_entry *next; // Next entry in the linked list
 };
