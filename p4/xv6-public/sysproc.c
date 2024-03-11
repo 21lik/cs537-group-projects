@@ -95,58 +95,81 @@ sys_uptime(void)
 
 // Map memory in the process's virtual address space to some physical memory,
 // similar to mmap.
-int
+uint 
 sys_wmap(void) {
-  uint addr;
-  int length, flags, fd;
+    uint addr;
+    int length, flags, fd;
 
-  // Get system call arguments, ensure they are valid
-  if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(3, &fd) < 0 || argint(0, (int *)&addr) < 0)
-    return FAILED;
+    if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
+        return FAILED;
 
-  // Check length is nonnegative and address is page aligned and in valid range, if fixed
-  if (length <= 0 || (flags & MAP_FIXED && (addr < 0x60000000 || addr >= 0x80000000 || addr % PGSIZE != 0)))
-    return FAILED;
+    if (!(flags & MAP_ANONYMOUS) && argint(3, &fd) < 0)
+        return FAILED;
 
-  if (!(flags & MAP_ANONYMOUS) || !(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
-    return FAILED; // TODO: debug, remove once other cases done
-  }
+    struct proc *curproc = myproc();
+    struct file *f = 0;
 
-  // Make sure MAP_SHARED xor MAP_PRIVATE (not both) is set
-  if (((flags & MAP_PRIVATE) == 0) != ((flags & MAP_SHARED) == 0))
-    return FAILED;
-
-  // Check memory space is available at addr
-  struct proc *curproc = myproc();
-  for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
-    if (addr >= me->addr && addr < me->addr + me->length) {
-      return FAILED;
+    if (!(flags & MAP_ANONYMOUS)) {
+        if (fd < 0 || fd >= NOFILE || (f = curproc->ofile[fd]) == 0)
+            return FAILED;
+        filedup(f);
     }
-  }
 
-  // Allocate physical pages
-  /* TODO: may want something like this instead of placeholder lines:
-  for (uint i = 0; i < length; i += PGSIZE) {
-    char *mem = kalloc();
-    if (mem == 0)
-      return FAILED;
-    mappages(page_directory, addr + i, PGSIZE, V2P(mem), PTE_W | PTE_U); // TODO: Or could have this at page fault handler (lazy allocation)
-  }
-  */
-  struct mmap_entry *me = (struct mmap_entry *)kalloc();
-  if (me == 0) {
-    return FAILED;
-  }
+    if (!(flags & MAP_FIXED)) {
+        // For non-fixed mappings, find a suitable address
+        addr = 0x60000000; // Start the search from this address
+        while (1) {
+            int fit = 1;
+            for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+                if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
+                    // Found an overlap, adjust addr and recheck
+                    addr = PGROUNDUP(me->addr + me->length);
+                    fit = 0;
+                    break;
+                }
+            }
+            if (fit || addr + length > 0x80000000) {
+                break; // Found a fit or reached address space limit
+            }
+        }
 
-  memset(me, 0, sizeof(struct mmap_entry));
-  me->addr = addr;
-  me->length = length;
-  me->flags = flags;
-  me->file = 0;
-  me->next = curproc->mmaps;
-  curproc->mmaps = me;
+        if (addr + length > 0x80000000) {
+            // No suitable address found within the address space
+            if (f) {
+                fileclose(f);
+            }
+            return FAILED;
+        }
+    } else {
+        // For MAP_FIXED, ensure the requested address doesn't overlap existing mappings
+        for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+            if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
+                // Found an overlap with MAP_FIXED
+                if (f) {
+                    fileclose(f);
+                }
+                return FAILED;
+            }
+        }
+    }
 
-  return addr;  // On success, return the starting virtual address
+    struct mmap_entry *me = (struct mmap_entry *)kalloc();
+    if (me == 0) {
+        if (f) {
+            fileclose(f);
+        }
+        return FAILED;
+    }
+
+    memset(me, 0, sizeof(struct mmap_entry));
+    me->addr = addr;
+    me->length = length;
+    me->flags = flags;
+    me->file = f;
+    me->next = curproc->mmaps;
+    curproc->mmaps = me;
+
+    return addr;
 }
 
 // Unmap memory from the process's virtual address space.
