@@ -6,7 +6,11 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "spinlock.h"
 #include "wmap.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 int
 sys_fork(void)
@@ -97,9 +101,8 @@ sys_uptime(void)
 // similar to mmap.
 uint
 sys_wmap(void) {
-    uint addr;
-    int length, flags, fd;
-
+	uint addr;
+	int length, flags, fd;
     // Retrieve arguments
     if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
         return FAILED;
@@ -189,10 +192,8 @@ sys_wmap(void) {
 
 int
 sys_wunmap(void) {
-    uint addr;
-
-    if (argint(0, (int *)&addr) < 0)
-        return FAILED;
+	uint addr;
+    if (argint(0, (int *)&addr) < 0) return FAILED;
 
     struct proc *curproc = myproc();
     struct mmap_entry **pme = &curproc->mmaps;
@@ -218,6 +219,7 @@ sys_wunmap(void) {
                     if (pte && (*pte & PTE_P)) {
                         if ((*pte & PTE_W)) {
                             // Page is dirty, write back to file
+                            me->file->off = i;
                             filewrite(me->file, vaddr, PGSIZE);
                             *pte &= ~PTE_W; // Clear the writable bit
                         }
