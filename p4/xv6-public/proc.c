@@ -201,6 +201,7 @@ fork(void)
 
   // Copy memory mappings from parent to child
   for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+    // cprintf("Copying memory mapping %x...\n", me->addr); // TODO: debug
     struct mmap_entry *newme = (struct mmap_entry *)kalloc();
     if (newme == 0) {
       kfree(np->kstack);
@@ -209,8 +210,12 @@ fork(void)
       return -1;
     }
     memmove(newme, me, sizeof(struct mmap_entry));
+    // If shared, indicate that newme is child of process that called wmap
+    if (newme->flags & MAP_SHARED)
+      newme->mapping_process = 0;
+    // cprintf("Copied memory mapping %x...\n", newme->addr); // TODO: debug
     
-    // If MAP_PRIVATE, mark the pages as copy-on-write
+    // If MAP_PRIVATE, mark the pages as copy-on-write // TODO: debug? MAP_SHARED?
     if (newme->flags & MAP_PRIVATE) {
       char *vaddr = (char *)newme->addr;
       for (uint i = 0; i < newme->length; i += PGSIZE) {
@@ -224,9 +229,27 @@ fork(void)
         *pte &= ~PTE_W; // Mark the page as read-only
       }
     }
+    // TODO: see if below fix works
+    // else {
+    //   char *vaddr = (char *)newme->addr;
+    //   for (uint i = 0; i < newme->length; i += PGSIZE) {
+    //     pte_t *pte = walkpgdir(curproc->pgdir, vaddr + i, 0);
+    //     if (!pte) {
+    //       cprintf("no pte (shared)\n"); // TODO: debug
+    //       kfree(np->kstack);
+    //       np->kstack = 0;
+    //       np->state = UNUSED;
+    //       return -1;
+    //       // break;
+    //     }
+    //     *pte |= PTE_W; // Mark the page as read-write
+    //   }
+    // }
     
     newme->next = np->mmaps;
     np->mmaps = newme;
+    // cprintf("We had me: addr=%x, flags=%d, length=%d, n_loaded_pages=%d, mapping_process=%d\n", me->addr, me->flags, me->length, me->n_loaded_pages, me->mapping_process); // TODO: debug
+    // cprintf("We see np->mmaps: addr=%x, flags=%d, length=%d, n_loaded_pages=%d, mapping_process=%d\n", np->mmaps->addr, np->mmaps->flags, np->mmaps->length, np->mmaps->n_loaded_pages, np->mmaps->mapping_process); // TODO: debug
   }
 
   np->sz = curproc->sz;
@@ -291,16 +314,18 @@ exit(void) {
       if (me->flags & MAP_SHARED) {
         filewrite(me->file, (char*)me->addr, me->length);
       }
-      fileclose(me->file);
+      fileclose(me->file); // TODO: do we want to close file for child process if shared? (if not, check that me->child == 0 first)
     }
 
-    // Free the physical memory if it has been allocated
-    for (uint i = 0; i < me->length; i += PGSIZE) {
-      pte_t *pte = walkpgdir(curproc->pgdir, (void *)(me->addr + i), 0);
-      if (pte && (*pte & PTE_P)) {
-        char *mem = P2V(PTE_ADDR(*pte));
-        kfree(mem);
-        *pte = 0;
+    // Free the physical memory if it has been allocated and, if shared, is the mapping process
+    if ((me->flags & MAP_PRIVATE) || me->mapping_process) {
+      for (uint i = 0; i < me->length; i += PGSIZE) {
+        pte_t *pte = walkpgdir(curproc->pgdir, (void *)(me->addr + i), 0);
+        if (pte && (*pte & PTE_P)) {
+          char *mem = P2V(PTE_ADDR(*pte));
+          kfree(mem);
+          *pte = 0;
+        }
       }
     }
 

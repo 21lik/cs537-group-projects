@@ -15,7 +15,6 @@
 int
 sys_fork(void)
 {
-  // TODO: copy the mappings from the parent process to the child, here or in proc.c
   return fork();
 }
 
@@ -111,6 +110,10 @@ sys_wmap(void) {
     if (!(flags & MAP_ANONYMOUS) && argint(3, &fd) < 0)
         return FAILED;
 
+    // Ensure mapping is private or shared, but not both
+    if (((flags & MAP_PRIVATE) != 0) == ((flags & MAP_SHARED) != 0))
+        return FAILED;
+
     struct proc *curproc = myproc();
     struct file *f = 0;
 
@@ -170,9 +173,9 @@ sys_wmap(void) {
     me->addr = addr;
     me->length = length;
     me->flags = flags;
-    me->allocated = 0;  // Indicates that physical memory is not yet allocated
+    me->mapping_process = 1;  // Indicates that this process mapped the virtual memory first
     me->n_loaded_pages = 0;
-    me->file = f;       // Associate the file with the mapping
+    me->file = f;             // Associate the file with the mapping
 
     // If MAP_PRIVATE, mark the pages as copy-on-write
     if (flags & MAP_PRIVATE) {
