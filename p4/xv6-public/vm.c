@@ -397,8 +397,11 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 //PAGEBREAK!
 // Blank page.
 
+
+// TODO: remove below if they aren't necessary
 int
 wunmap(uint addr){
+  // panic("unmapped from vm.c\n"); // TODO: debug
 	if (argint(0, (int *)&addr) < 0) return FAILED;
 	
 	    struct proc *curproc = myproc();
@@ -430,6 +433,8 @@ wunmap(uint addr){
 	                            *pte &= ~PTE_W; // Clear the writable bit
 	                        }
 	                        // Clear the PTE
+                          uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
+                          kfree(P2V(physical_address)); // TODO: does this work?
 	                        *pte = 0;
 	                    }
 	                }
@@ -458,6 +463,7 @@ wunmap(uint addr){
 
 uint
 wmap(uint addr, int length, int flags, int fd) {
+    // panic("mapped from vm.c\n"); // TODO: debug
     // Retrieve arguments
     if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
         return FAILED;

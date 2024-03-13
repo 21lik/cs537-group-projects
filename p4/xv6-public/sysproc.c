@@ -228,6 +228,8 @@ sys_wunmap(void) {
                             *pte &= ~PTE_W; // Clear the writable bit
                         }
                         // Clear the PTE
+                        uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
+                        kfree(P2V(physical_address)); // TODO: does this work?
                         *pte = 0;
                     }
                 }
@@ -264,12 +266,12 @@ sys_wremap(void) {
       argint(1, &oldsize) < 0 ||
       argint(2, &newsize) < 0 ||
       argint(3, &flags) < 0) {
-    return -1;
+    return FAILED;
   }
 
   // Validate the new size
   if (newsize <= 0) {
-    return -1;
+    return FAILED;
   }
 
   struct proc *curproc = myproc();
@@ -284,11 +286,24 @@ sys_wremap(void) {
 
   // If no corresponding mapping is found, return an error
   if (me == 0) {
-    return -1;
+    return FAILED;
+  }
+
+  // If new size overlaps with another map entry, must move (will fail if cannot move)
+  int mustmove = 0;
+  if (newsize > oldsize) {
+    for (struct mmap_entry *otherme = curproc->mmaps; otherme != 0; otherme = otherme->next) {
+      if (me != otherme && otherme->addr <= me->addr + me->length) {
+        // Overlap found, must move (or fail if cannot)
+        if (!(flags & MREMAP_MAYMOVE))
+          return FAILED;
+        mustmove = 1;
+      }
+    }
   }
 
   // Resize the mapping in place if there's enough space and no movement is required
-  if (newsize <= oldsize || !(flags & MREMAP_MAYMOVE)) {
+  if (!mustmove || !(flags & MREMAP_MAYMOVE)) {
     me->length = newsize;
     return oldaddr;
   } else {
@@ -309,8 +324,8 @@ sys_wremap(void) {
     }
 
     // Update the mapping entry to reflect the new location and size
-    me->addr = newaddr;
-    me->length = newsize;
+    // me->addr = newaddr;
+    // me->length = newsize;
 
     return newaddr;
   }
