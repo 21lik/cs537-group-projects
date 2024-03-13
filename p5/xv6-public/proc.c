@@ -401,10 +401,19 @@ scheduler(void)
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
+    // Loop over process table looking for process with min nice value to run.
     acquire(&ptable.lock);
+    int minnice = 19;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
+        continue;
+
+      if (p->nice < minnice)
+        minnice = p->nice;
+    }
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if (p->state != RUNNABLE || p->nice > minnice)
         continue;
 
       // Switch to chosen process.  It is the process's job
