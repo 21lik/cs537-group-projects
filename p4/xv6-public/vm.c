@@ -399,158 +399,158 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 
 
 // TODO: remove below if they aren't necessary
-int
-wunmap(uint addr){
-  // panic("unmapped from vm.c\n"); // TODO: debug
-	if (argint(0, (int *)&addr) < 0) return FAILED;
+// int
+// wunmap(uint addr){
+//   // panic("unmapped from vm.c\n"); // TODO: debug
+// 	if (argint(0, (int *)&addr) < 0) return FAILED;
 	
-	    struct proc *curproc = myproc();
-	    struct mmap_entry **pme = &curproc->mmaps;
+// 	    struct proc *curproc = myproc();
+// 	    struct mmap_entry **pme = &curproc->mmaps;
 	
-	    while (*pme != 0) {
-	        struct mmap_entry *me = *pme;
-	        if (me->addr == addr) {
-	            if (me->flags & MAP_PRIVATE) {
-	                // For MAP_PRIVATE, simply invalidate PTEs
-	                for (uint i = 0; i < me->length; i += PGSIZE) {
-	                    char *vaddr = (char *)(me->addr + i);
-	                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
-	                    if (pte && (*pte & PTE_P)) {
-	                        // Clear the PTE
-	                        *pte = 0;
-	                    }
-	                }
-	            } else if (me->flags & MAP_SHARED) {
-	                // For shared mappings, invalidate PTEs and close the file
-	                for (uint i = 0; i < me->length; i += PGSIZE) {
-	                    char *vaddr = (char *)(me->addr + i);
-	                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
-	                    if (pte && (*pte & PTE_P)) {
-	                        if ((*pte & PTE_W)) {
-	                            // Page is dirty, write back to file
-	                            me->file->off = i;
-	                            filewrite(me->file, vaddr, PGSIZE);
-	                            *pte &= ~PTE_W; // Clear the writable bit
-	                        }
-	                        // Clear the PTE
-                          uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
-                          kfree(P2V(physical_address)); // TODO: does this work?
-	                        *pte = 0;
-	                    }
-	                }
-	                // Close the file descriptor associated with the mapping
-	                if (me->file) {
-	                    fileclose(me->file);
-	                }
-	            }
+// 	    while (*pme != 0) {
+// 	        struct mmap_entry *me = *pme;
+// 	        if (me->addr == addr) {
+// 	            if (me->flags & MAP_PRIVATE) {
+// 	                // For MAP_PRIVATE, simply invalidate PTEs
+// 	                for (uint i = 0; i < me->length; i += PGSIZE) {
+// 	                    char *vaddr = (char *)(me->addr + i);
+// 	                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+// 	                    if (pte && (*pte & PTE_P)) {
+// 	                        // Clear the PTE
+// 	                        *pte = 0;
+// 	                    }
+// 	                }
+// 	            } else if (me->flags & MAP_SHARED) {
+// 	                // For shared mappings, invalidate PTEs and close the file
+// 	                for (uint i = 0; i < me->length; i += PGSIZE) {
+// 	                    char *vaddr = (char *)(me->addr + i);
+// 	                    pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+// 	                    if (pte && (*pte & PTE_P)) {
+// 	                        if ((*pte & PTE_W)) {
+// 	                            // Page is dirty, write back to file
+// 	                            me->file->off = i;
+// 	                            filewrite(me->file, vaddr, PGSIZE);
+// 	                            *pte &= ~PTE_W; // Clear the writable bit
+// 	                        }
+// 	                        // Clear the PTE
+//                           uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
+//                           kfree(P2V(physical_address)); // TODO: does this work?
+// 	                        *pte = 0;
+// 	                    }
+// 	                }
+// 	                // Close the file descriptor associated with the mapping
+// 	                if (me->file) {
+// 	                    fileclose(me->file);
+// 	                }
+// 	            }
 	
-	            // Remove the mapping from the process's list
-	            *pme = me->next;
-	            kfree((char *)me);
+// 	            // Remove the mapping from the process's list
+// 	            *pme = me->next;
+// 	            kfree((char *)me);
 	
-	            // Invalidate the TLB
-	            lcr3(V2P(curproc->pgdir));
+// 	            // Invalidate the TLB
+// 	            lcr3(V2P(curproc->pgdir));
 	
-	            return SUCCESS;
-	        }
-	        pme = &me->next;
-	    }
+// 	            return SUCCESS;
+// 	        }
+// 	        pme = &me->next;
+// 	    }
 	
-	    // Mapping not found
-	    return FAILED;
-}
+// 	    // Mapping not found
+// 	    return FAILED;
+// }
 
 
-uint
-wmap(uint addr, int length, int flags, int fd) {
-    // panic("mapped from vm.c\n"); // TODO: debug
-    // Retrieve arguments
-    if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
-        return FAILED;
+// uint
+// wmap(uint addr, int length, int flags, int fd) {
+//     // panic("mapped from vm.c\n"); // TODO: debug
+//     // Retrieve arguments
+//     if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
+//         return FAILED;
 
-    // Retrieve the file descriptor if the mapping is not anonymous
-    if (!(flags & MAP_ANONYMOUS) && argint(3, &fd) < 0)
-        return FAILED;
+//     // Retrieve the file descriptor if the mapping is not anonymous
+//     if (!(flags & MAP_ANONYMOUS) && argint(3, &fd) < 0)
+//         return FAILED;
 
-    // Ensure mapping is private or shared, but not both
-    if (((flags & MAP_PRIVATE) != 0) == ((flags & MAP_SHARED) != 0))
-        return FAILED;
+//     // Ensure mapping is private or shared, but not both
+//     if (((flags & MAP_PRIVATE) != 0) == ((flags & MAP_SHARED) != 0))
+//         return FAILED;
 
-    struct proc *curproc = myproc();
-    struct file *f = 0;
+//     struct proc *curproc = myproc();
+//     struct file *f = 0;
 
-    // If not anonymous, validate and retrieve the file structure
-    if (!(flags & MAP_ANONYMOUS)) {
-        if (fd < 0 || fd >= NOFILE || (f = curproc->ofile[fd]) == 0)
-            return FAILED;
-        filedup(f);  // Increase the file's reference count
-    }
+//     // If not anonymous, validate and retrieve the file structure
+//     if (!(flags & MAP_ANONYMOUS)) {
+//         if (fd < 0 || fd >= NOFILE || (f = curproc->ofile[fd]) == 0)
+//             return FAILED;
+//         filedup(f);  // Increase the file's reference count
+//     }
 
-    // Handle non-fixed mappings by searching for a suitable address
-    if (!(flags & MAP_FIXED)) {
-        addr = 0x60000000; // Start from this address
-        while (1) {
-            int fit = 1;
-            for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
-                if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
-                    addr = PGROUNDUP(me->addr + me->length);
-                    fit = 0;
-                    break;
-                }
-            }
-            if (fit || addr + length > 0x80000000) {
-                break;  // Suitable space found or reached address space limit
-            }
-        }
+//     // Handle non-fixed mappings by searching for a suitable address
+//     if (!(flags & MAP_FIXED)) {
+//         addr = 0x60000000; // Start from this address
+//         while (1) {
+//             int fit = 1;
+//             for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+//                 if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
+//                     addr = PGROUNDUP(me->addr + me->length);
+//                     fit = 0;
+//                     break;
+//                 }
+//             }
+//             if (fit || addr + length > 0x80000000) {
+//                 break;  // Suitable space found or reached address space limit
+//             }
+//         }
 
-        if (addr + length > 0x80000000) {
-            if (f) {
-                fileclose(f);
-            }
-            return FAILED;  // No suitable address found
-        }
-    } else {
-        // Ensure the requested address doesn't overlap existing mappings (for MAP_FIXED)
-        for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
-            if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
-                if (f) {
-                    fileclose(f);
-                }
-                return FAILED;
-            }
-        }
-    }
+//         if (addr + length > 0x80000000) {
+//             if (f) {
+//                 fileclose(f);
+//             }
+//             return FAILED;  // No suitable address found
+//         }
+//     } else {
+//         // Ensure the requested address doesn't overlap existing mappings (for MAP_FIXED)
+//         for (struct mmap_entry *me = curproc->mmaps; me != 0; me = me->next) {
+//             if ((addr < me->addr + me->length) && (addr + length > me->addr)) {
+//                 if (f) {
+//                     fileclose(f);
+//                 }
+//                 return FAILED;
+//             }
+//         }
+//     }
 
-    // Create a new memory map entry
-    struct mmap_entry *me = (struct mmap_entry *)kalloc();
-    if (me == 0) {
-        if (f) {
-            fileclose(f);
-        }
-        return FAILED;
-    }
+//     // Create a new memory map entry
+//     struct mmap_entry *me = (struct mmap_entry *)kalloc();
+//     if (me == 0) {
+//         if (f) {
+//             fileclose(f);
+//         }
+//         return FAILED;
+//     }
 
-    // Initialize the memory map entry
-    memset(me, 0, sizeof(struct mmap_entry));
-    me->addr = addr;
-    me->length = length;
-    me->flags = flags;
-    me->mapping_process = curproc;  // Indicates that this process mapped the virtual memory first
-    me->n_loaded_pages = 0;
-    me->file = f;             // Associate the file with the mapping
+//     // Initialize the memory map entry
+//     memset(me, 0, sizeof(struct mmap_entry));
+//     me->addr = addr;
+//     me->length = length;
+//     me->flags = flags;
+//     me->mapping_process = curproc;  // Indicates that this process mapped the virtual memory first
+//     me->n_loaded_pages = 0;
+//     me->file = f;             // Associate the file with the mapping
 
-    // If MAP_PRIVATE, mark the pages as copy-on-write
-    if (flags & MAP_PRIVATE) {
-        char *vaddr = (char *)me->addr;
-        for (uint i = 0; i < me->length; i += PGSIZE) {
-            pte_t *pte = walkpgdir(curproc->pgdir, vaddr + i, 0);
-            *pte &= ~PTE_W; // Mark the page as read-only
-        }
-    }
+//     // If MAP_PRIVATE, mark the pages as copy-on-write
+//     if (flags & MAP_PRIVATE) {
+//         char *vaddr = (char *)me->addr;
+//         for (uint i = 0; i < me->length; i += PGSIZE) {
+//             pte_t *pte = walkpgdir(curproc->pgdir, vaddr + i, 0);
+//             *pte &= ~PTE_W; // Mark the page as read-only
+//         }
+//     }
 
-    // Add the new memory map entry to the process's list
-    me->next = curproc->mmaps;
-    curproc->mmaps = me;
+//     // Add the new memory map entry to the process's list
+//     me->next = curproc->mmaps;
+//     curproc->mmaps = me;
 
-    return addr;
-}
+//     return addr;
+// }

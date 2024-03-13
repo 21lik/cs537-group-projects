@@ -100,8 +100,8 @@ sys_uptime(void)
 // similar to mmap.
 uint
 sys_wmap(void) {
-	uint addr;
-	int length, flags, fd;
+    uint addr;
+    int length, flags, fd;
     // Retrieve arguments
     if (argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(0, (int *)&addr) < 0)
         return FAILED;
@@ -196,7 +196,7 @@ sys_wmap(void) {
 
 int
 sys_wunmap(void) {
-	uint addr;
+    uint addr;
     if (argint(0, (int *)&addr) < 0) return FAILED;
 
     struct proc *curproc = myproc();
@@ -275,10 +275,10 @@ sys_wremap(void) {
   }
 
   struct proc *curproc = myproc();
-  struct mmap_entry *me = 0;
+  struct mmap_entry *me = 0, *pme = 0;
 
   // Locate the corresponding memory mapping
-  for (me = curproc->mmaps; me != 0; me = me->next) {
+  for (me = curproc->mmaps; me != 0; pme = me, me = me->next) {
     if (me->addr == oldaddr && me->length == oldsize) {
       break;
     }
@@ -293,42 +293,149 @@ sys_wremap(void) {
   int mustmove = 0;
   if (newsize > oldsize) {
     for (struct mmap_entry *otherme = curproc->mmaps; otherme != 0; otherme = otherme->next) {
-      if (me != otherme && otherme->addr <= me->addr + me->length) {
+      if (me != otherme && otherme->addr <= me->addr + newsize) {
         // Overlap found, must move (or fail if cannot)
         if (!(flags & MREMAP_MAYMOVE))
           return FAILED;
         mustmove = 1;
+        break;
       }
     }
   }
+//   cprintf("mustmove=%d\n", mustmove); // TODO: debug
+//   cprintf("flags=%d\n", flags); // TODO: debug
 
   // Resize the mapping in place if there's enough space and no movement is required
   if (!mustmove || !(flags & MREMAP_MAYMOVE)) {
     me->length = newsize;
     return oldaddr;
-  } else {
+  } 
     // Attempt to create a new mapping
-    uint newaddr = wmap(0, newsize, me->flags, -1);  // Anonymous mapping, so fd is -1
-    if (newaddr == (uint)-1) {
+    // uint newaddr = wmap(0, newsize, me->flags, -1);  // Anonymous mapping, so fd is -1
+    
+    // TODO: revise below
+
+    uint newaddr = 0x60000000; // Start from this address
+    while (1) {
+      int fit = 1;
+      for (struct mmap_entry *otherme = curproc->mmaps; otherme != 0; otherme = otherme->next) {
+        if ((newaddr < otherme->addr + otherme->length) && (newaddr + newsize > otherme->addr)) {
+          newaddr = PGROUNDUP(otherme->addr + otherme->length);
+          fit = 0;
+          break;
+        }
+      }
+      if (fit || newaddr + newsize > 0x80000000) {
+        break;  // Suitable space found or reached address space limit
+      }
+    }
+
+    if (newaddr + newsize > 0x80000000) {
       return oldaddr;  // Return old address if the new mapping creation fails
     }
+
+    // cprintf("newaddr=%x\n", newaddr); // TODO: debug
+
+    // Create a new memory map entry
+    struct mmap_entry *newme = (struct mmap_entry *)kalloc();
+    if (newme == 0) {
+      return oldaddr;  // Return old address if the new mapping creation fails
+    }
+
+    // Initialize the memory map entry
+    memset(newme, 0, sizeof(struct mmap_entry));
+    newme->addr = newaddr;
+    newme->length = newsize;
+    newme->flags = me->flags;
+    newme->mapping_process = curproc;  // Indicates that this process mapped the virtual memory first
+    newme->n_loaded_pages = me->n_loaded_pages; // TODO: either this or 0
+    newme->file = me->file;             // Associate the file with the mapping
+    newme->rc = 1;
+
+    // cprintf("constructed newme\n"); // TODO: debug
+
+    // If MAP_PRIVATE, mark the pages as copy-on-write
+    // if (flags & MAP_PRIVATE) {
+    //   char *vaddr = (char *)me->addr;
+    //   for (uint i = 0; i < newsize; i += PGSIZE) {
+    //     pte_t *pte = walkpgdir(curproc->pgdir, vaddr + i, 0);
+    //     *pte &= ~PTE_W; // Mark the page as read-only
+    //   }
+    // }
+
+    // Add the new memory map entry to the process's list
+    newme->next = curproc->mmaps;
+    curproc->mmaps = newme;
+    
+    // TODO: revise above
+
+    // if (newaddr == (uint)-1) {
+    //   return oldaddr;  // Return old address if the new mapping creation fails
+    // }
 
     // Copy existing data to the new mapping location
     memmove((void *)newaddr, (void *)oldaddr, oldsize);
 
     // Remove the old mapping
-    if (wunmap(oldaddr) == -1) {
-      // Cleanup newly created mapping if unmap fails, then return old address
-      wunmap(newaddr);
-      return oldaddr;
-    }
 
-    // Update the mapping entry to reflect the new location and size
-    // me->addr = newaddr;
-    // me->length = newsize;
+
+    // TODO: revise below
+
+    // cprintf("copied data\n"); // TODO: debug
+
+    if (me->flags & MAP_PRIVATE) {
+        // For MAP_PRIVATE, simply invalidate PTEs
+        for (uint i = 0; i < newsize; i += PGSIZE) {
+            char *vaddr = (char *)(me->addr + i);
+            pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+            if (pte && (*pte & PTE_P)) {
+                // Clear the PTE
+                // uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
+                // kfree(P2V(physical_address)); // TODO: does this work?
+                // *pte = 0;
+            }
+        }
+    } else if (me->flags & MAP_SHARED) {
+        // For shared mappings, invalidate PTEs and close the file
+        for (uint i = 0; i < newsize; i += PGSIZE) {
+            char *vaddr = (char *)(newsize + i);
+            pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+            if (pte && (*pte & PTE_P)) {
+                if ((*pte & PTE_W)) {
+                    // Page is dirty, write back to file
+                    me->file->off = i;
+                    filewrite(me->file, vaddr, PGSIZE);
+                    // *pte &= ~PTE_W; // Clear the writable bit
+                }
+                // Clear the PTE
+                // uint physical_address = PTE_ADDR(*pte); // TODO: does this work? (shared, so...)
+                // kfree(P2V(physical_address)); // TODO: does this work? (shared...)
+                // *pte = 0; // TODO: if shared, though... (also see above in wunmap)
+            }
+        }
+
+        // Remove the mapping from the process's list
+        // *pme = me->next;
+        // kfree((char *)me);
+
+        // Invalidate the TLB
+        lcr3(V2P(curproc->pgdir));
+    }
+    // cprintf("invalidated PTEs\n"); // TODO: debug
+    // TODO: revise above
+
+    // Remove the mapping from the process's list
+    if (pme)
+      pme->next = me->next;
+    else
+      newme->next = me->next;
+    kfree((char *)me);
+
+    // cprintf("wremap done\n"); // TODO: debug
+
 
     return newaddr;
-  }
+  
 }
 
 int 

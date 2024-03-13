@@ -6,7 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-#include  "wmap.h"
+#include "wmap.h"
 #include "memlayout.h"
 
 struct {
@@ -290,6 +290,54 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
 
+  // Remove all memory mappings
+  while (curproc->mmaps != 0) {
+    // wunmap(curproc->mmaps->addr);
+    struct mmap_entry *me = curproc->mmaps;
+    if (me->flags & MAP_PRIVATE) {
+      // For MAP_PRIVATE, simply invalidate PTEs
+      for (uint i = 0; i < me->length; i += PGSIZE) {
+        char *vaddr = (char *)(me->addr + i);
+        pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+        if (pte && (*pte & PTE_P)) {
+          // Clear the PTE
+          uint physical_address = PTE_ADDR(*pte); // TODO: does this work?
+          kfree(P2V(physical_address)); // TODO: does this work?
+          *pte = 0;
+        }
+      }
+    } else if (me->flags & MAP_SHARED) {
+      // For shared mappings, invalidate PTEs and close the file
+      for (uint i = 0; i < me->length; i += PGSIZE) {
+        char *vaddr = (char *)(me->addr + i);
+        pte_t *pte = walkpgdir(curproc->pgdir, vaddr, 0);
+        if (pte && (*pte & PTE_P)) {
+          if ((*pte & PTE_W)) {
+            // Page is dirty, write back to file
+            //me->file->off = i;
+            filewrite(me->file, vaddr, PGSIZE);
+            *pte &= ~PTE_W; // Clear the writable bit
+          }
+          // Clear the PTE
+          uint physical_address = PTE_ADDR(*pte); // TODO: does this work? (shared, so...)
+          kfree(P2V(physical_address)); // TODO: does this work? (shared...)
+          *pte = 0; // TODO: if shared, though... (also see above in wunmap)
+        }
+      }
+      // Close the file descriptor associated with the mapping
+      if (me->file) {
+        fileclose(me->file);
+      }
+
+      // Remove the mapping from the process's list
+      curproc->mmaps = me->next;
+      kfree((char *)me);
+
+      // Invalidate the TLB
+      // lcr3(V2P(curproc->pgdir)); // TODO: does this flush the TLB?
+    }
+  }
+
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
@@ -302,11 +350,6 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-
-  // Remove all memory mappings
-  while (curproc->mmaps != 0) {
-      wunmap(curproc->mmaps->addr);
-  }
 
   acquire(&ptable.lock);
 
