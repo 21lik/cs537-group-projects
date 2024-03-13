@@ -61,9 +61,10 @@ struct proc {
 
 struct mmap_entry {
     uint addr;               // Starting virtual address of the mapping
-    uint length;             // Length of the mapping
+    int length;             // Length of the mapping
     int flags;               // Flags that were passed to wmap
-    int mapping_process;     // Indicates whether the process is the one that called wmap
+    int rc;
+    struct proc *mapping_process;     // Indicates whether the process is the one that called wmap
     int n_loaded_pages;
     struct file *file;       // Backing file, if any
     struct mmap_entry *next; // Next entry in the linked list

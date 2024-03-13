@@ -11,7 +11,7 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "file.h"
-
+#define min(a, b) ((a) < (b) ? (a) : (b))
 int
 sys_fork(void)
 {
@@ -173,9 +173,10 @@ sys_wmap(void) {
     me->addr = addr;
     me->length = length;
     me->flags = flags;
-    me->mapping_process = 1;  // Indicates that this process mapped the virtual memory first
+    me->mapping_process = curproc;  // Indicates that this process mapped the virtual memory first
     me->n_loaded_pages = 0;
     me->file = f;             // Associate the file with the mapping
+    me->rc = 1;
 
     // If MAP_PRIVATE, mark the pages as copy-on-write
     if (flags & MAP_PRIVATE) {
@@ -253,22 +254,68 @@ sys_wunmap(void) {
 }
 
 // Resize an existing mapping.
-int
-sys_wremap(void)
-{
+uint
+sys_wremap(void) {
   uint oldaddr;
   int oldsize, newsize, flags;
 
-  // TODO: fix below as necessary
-  // Get system call arguments, ensure they are valid
-  if (argint(1, &oldsize) < 0 || argint(2, &newsize) < 0 || argint(3, &flags) < 0 || argint(0, (int *)&oldaddr) < 0)
-    return FAILED;
-  // TODO: implement wremap
+  // Fetch system call arguments
+  if (argint(0, (int *)&oldaddr) < 0 ||
+      argint(1, &oldsize) < 0 ||
+      argint(2, &newsize) < 0 ||
+      argint(3, &flags) < 0) {
+    return -1;
+  }
 
-  return SUCCESS;
+  // Validate the new size
+  if (newsize <= 0) {
+    return -1;
+  }
+
+  struct proc *curproc = myproc();
+  struct mmap_entry *me = 0;
+
+  // Locate the corresponding memory mapping
+  for (me = curproc->mmaps; me != 0; me = me->next) {
+    if (me->addr == oldaddr && me->length == oldsize) {
+      break;
+    }
+  }
+
+  // If no corresponding mapping is found, return an error
+  if (me == 0) {
+    return -1;
+  }
+
+  // Resize the mapping in place if there's enough space and no movement is required
+  if (newsize <= oldsize || !(flags & MREMAP_MAYMOVE)) {
+    me->length = newsize;
+    return oldaddr;
+  } else {
+    // Attempt to create a new mapping
+    uint newaddr = wmap(0, newsize, me->flags, -1);  // Anonymous mapping, so fd is -1
+    if (newaddr == (uint)-1) {
+      return oldaddr;  // Return old address if the new mapping creation fails
+    }
+
+    // Copy existing data to the new mapping location
+    memmove((void *)newaddr, (void *)oldaddr, oldsize);
+
+    // Remove the old mapping
+    if (wunmap(oldaddr) == -1) {
+      // Cleanup newly created mapping if unmap fails, then return old address
+      wunmap(newaddr);
+      return oldaddr;
+    }
+
+    // Update the mapping entry to reflect the new location and size
+    me->addr = newaddr;
+    me->length = newsize;
+
+    return newaddr;
+  }
 }
 
-// Retrieve information about the memory maps in the process address space.
 int 
 sys_getwmapinfo(void) {
   struct wmapinfo *wminfo;
@@ -290,8 +337,6 @@ sys_getwmapinfo(void) {
   wminfo->total_mmaps = count;
   return SUCCESS;
 }
-
-
 
 // Retrieve information about the physical pages in the process address space.
 int sys_getpgdirinfo(void) {

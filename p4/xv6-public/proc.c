@@ -277,13 +277,12 @@ fork(void)
   return pid;
 }
 
-
-
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
-void 
-exit(void) {
+void
+exit(void)
+{
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
@@ -305,32 +304,8 @@ exit(void) {
   curproc->cwd = 0;
 
   // Remove all memory mappings
-  while (curproc->mmaps) {
-    struct mmap_entry *me = curproc->mmaps;
-    curproc->mmaps = me->next;
-    
-    if (me->file) {
-      // If it's a file-backed mapping and MAP_SHARED is set, write back to the file
-      if (me->flags & MAP_SHARED) {
-        filewrite(me->file, (char*)me->addr, me->length);
-      }
-      fileclose(me->file); // TODO: do we want to close file for child process if shared? (if not, check that me->child == 0 first)
-    }
-
-    // Free the physical memory if it has been allocated and, if shared, is the mapping process
-    if ((me->flags & MAP_PRIVATE) || me->mapping_process) {
-      for (uint i = 0; i < me->length; i += PGSIZE) {
-        pte_t *pte = walkpgdir(curproc->pgdir, (void *)(me->addr + i), 0);
-        if (pte && (*pte & PTE_P)) {
-          char *mem = P2V(PTE_ADDR(*pte));
-          kfree(mem);
-          *pte = 0;
-        }
-      }
-    }
-
-    // Free the mmap_entry structure
-    kfree((char *)me);
+  while (curproc->mmaps != 0) {
+      wunmap(curproc->mmaps->addr);
   }
 
   acquire(&ptable.lock);
@@ -352,7 +327,6 @@ exit(void) {
   sched();
   panic("zombie exit");
 }
-
 
 
 // Wait for a child process to exit and return its pid.
