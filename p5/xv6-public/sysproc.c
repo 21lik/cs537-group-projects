@@ -22,6 +22,22 @@ int sys_clone(void)
   return clone((void (*)(void*))fn, (void*)stack, (void*)arg);
 }
 
+// Adjust the priority of the thread
+int sys_nice(void) {
+  int inc;
+
+  if (argint(0, &inc) < 0)
+    return -1;
+
+  inc += myproc()->nice;
+  if (inc > 19)
+    inc = 19;
+  else if (inc < -20)
+    inc = -20;
+  myproc()->nice = inc;
+  return 0;
+}
+
 int
 sys_exit(void)
 {
