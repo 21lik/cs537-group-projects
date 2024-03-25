@@ -1,5 +1,19 @@
 {
     "files.associations": {
-        "string_view": "c"
+        "string_view": "c",
+        "sleeplock.h": "c",
+        "param.h": "c",
+        "user.h": "c",
+        "memlayout.h": "c",
+        "proc.h": "c",
+        "typeinfo": "c",
+        "mutex.h": "c",
+        "x86.h": "c",
+        "spinlock.h": "c",
+        "fcntl.h": "c",
+        "stat.h": "c",
+        "types.h": "c",
+        "mmu.h": "c",
+        "defs.h": "c"
     }
 }

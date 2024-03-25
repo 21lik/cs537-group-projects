@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "mutex.h"
 
 int
 sys_fork(void)
@@ -22,7 +23,37 @@ int sys_clone(void)
   return clone((void (*)(void*))fn, (void*)stack, (void*)arg);
 }
 
-// Adjust the priority of the thread
+// Acquire the mutex lock, putting the thread to sleep if it's not available.
+int sys_macquire(void) {
+  mutex *m;
+  if (argptr(0, (char**) &m, sizeof(mutex)))
+    return -1;
+
+  acquire(&m->lk);
+  while (m->locked) {
+    sleep(m, &m->lk);
+  }
+  m->locked = 1;
+  m->pid = myproc()->pid;
+  release(&m->lk);
+  return 0;
+}
+
+// Release the lock and wake up any threads waiting for the lock.
+int sys_mrelease(void) {
+  mutex *m;
+  if (argptr(0, (char**) &m, sizeof(mutex)))
+    return -1;
+
+  acquire(&m->lk);
+  m->locked = 0;
+  m->pid = 0;
+  wakeup(m);
+  release(&m->lk);
+  return 0;
+}
+
+// Adjust the priority of the thread.
 int sys_nice(void) {
   int inc;
 
