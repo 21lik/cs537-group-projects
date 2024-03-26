@@ -1,6 +1,7 @@
 struct stat;
 struct rtcdate;
-#include "mutex.h" // TODO: is this correct?
+
+#include "mutex.h"
 
 // system calls
 int fork(void);
