@@ -1,3 +1,5 @@
+#define MAXMUTEXLOCKSHELD 16
+
 #include "spinlock.h"
 
 // User-space sleep lock

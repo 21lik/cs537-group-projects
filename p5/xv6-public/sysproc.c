@@ -6,7 +6,6 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
-#include "mutex.h"
 
 int
 sys_fork(void)
@@ -34,7 +33,9 @@ int sys_macquire(void) {
     sleep(m, &m->lk);
   }
   m->locked = 1;
-  m->pid = myproc()->pid;
+  struct proc *curproc = myproc();
+  m->pid = curproc->pid;
+  curproc->locks_held[curproc->num_locks_held++] = m;
   release(&m->lk);
   return 0;
 }
@@ -46,6 +47,13 @@ int sys_mrelease(void) {
     return -1;
 
   acquire(&m->lk);
+  struct proc *curproc = myproc();
+  for (int i = 0; i < curproc->num_locks_held; i++) {
+    if (curproc->locks_held[i] == m) {
+      curproc->locks_held[i] = curproc->locks_held[--(curproc->num_locks_held)];
+      curproc->locks_held[curproc->num_locks_held] = 0;
+    }
+  }
   m->locked = 0;
   m->pid = 0;
   wakeup(m);

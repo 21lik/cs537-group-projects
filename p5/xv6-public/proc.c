@@ -117,6 +117,10 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+  // Initialize process's nice value, locks held
+  p->num_locks_held = 0;
+  p->nice = 0;
+
   return p;
 }
 
