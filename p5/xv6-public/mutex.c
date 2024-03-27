@@ -6,7 +6,7 @@
 #include "stat.h"
 #include "fcntl.h"
 
-// Initialize the lock and prepares any necessary internal structures.
+// Initialize the lock and prepare any necessary internal structures.
 void minit(mutex *m) {
   struct spinlock *sp = &m->lk;
   sp->name = "mutex";

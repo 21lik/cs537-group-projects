@@ -60,6 +60,7 @@ struct proc {
   mutex *locks_held[MAXMUTEXLOCKSHELD];  // Mutex locks held by the process/thread
   int num_locks_held;                    // Num mutex locks held by the process/thread
   int nice;                              // Nice value (higher nice = lower priority)
+  int elevated_nice;                     // Elevated nice value (updated in scheduler, used for lock holders)
 };
 typedef struct {
   struct spinlock lock;

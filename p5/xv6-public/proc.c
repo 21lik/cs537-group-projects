@@ -120,6 +120,7 @@ found:
   // Initialize process's nice value, locks held
   p->num_locks_held = 0;
   p->nice = 0;
+  p->elevated_nice = 0;
 
   return p;
 }
@@ -412,12 +413,21 @@ scheduler(void)
       if(p->state != RUNNABLE)
         continue;
 
-      if (p->nice < minnice)
-        minnice = p->nice;
+      // Set elevated nice value
+      p->elevated_nice = p->nice;
+      for(int i = 0; i < p->num_locks_held; p++) {
+        for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
+          if(q->state == SLEEPING && p->locks_held[i] == q->chan && p->elevated_nice > q->nice)
+            p->elevated_nice = q->nice;
+        }
+      }
+
+      if (p->elevated_nice < minnice)
+        minnice = p->elevated_nice;
     }
 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if (p->state != RUNNABLE || p->nice > minnice)
+      if (p->state != RUNNABLE || p->elevated_nice > minnice)
         continue;
 
       // Switch to chosen process.  It is the process's job
