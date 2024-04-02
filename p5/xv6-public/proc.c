@@ -401,7 +401,7 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
@@ -415,9 +415,10 @@ scheduler(void)
 
       // Set elevated nice value
       p->elevated_nice = p->nice;
-      for(int i = 0; i < p->num_locks_held; p++) {
+      for(int i = 0; i < p->num_locks_held; i++) {
+        struct mutex *lock = p->locks_held[i];
         for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
-          if(q->state == SLEEPING && p->locks_held[i] == q->chan && p->elevated_nice > q->nice)
+          if(q->state == SLEEPING && q->chan == lock && q->nice < p->elevated_nice)
             p->elevated_nice = q->nice;
         }
       }
