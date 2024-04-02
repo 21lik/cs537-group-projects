@@ -29,13 +29,18 @@ int sys_macquire(void) {
     return -1;
 
   acquire(&m->lk);
+  struct proc *curproc = myproc();
+  pte_t *pte = walkpgdir(curproc->pgdir, m, 0); // Get PTE corresponding to the mutex
+  if (!pte)
+    return -1; // Invalid mutex pointer
+  void* m_phys = (void*) PTE_ADDR(*pte); // Calculate the physical address of the mutex
+
   while (m->locked) {
-    sleep(m, &m->lk);
+    sleep(m_phys, &m->lk); // Use physical address of m as argument to sleep
   }
   m->locked = 1;
-  struct proc *curproc = myproc();
   m->pid = curproc->pid;
-  curproc->locks_held[curproc->num_locks_held++] = m;
+  curproc->locks_held[curproc->num_locks_held++] = m_phys;
   release(&m->lk);
   return 0;
 }
@@ -48,15 +53,20 @@ int sys_mrelease(void) {
 
   acquire(&m->lk);
   struct proc *curproc = myproc();
+  pte_t *pte = walkpgdir(curproc->pgdir, m, 0); // Get PTE corresponding to the mutex
+  if (!pte)
+    return -1; // Invalid mutex pointer
+  void* m_phys = (void*) PTE_ADDR(*pte); // Calculate the physical address of the mutex
+
   for (int i = 0; i < curproc->num_locks_held; i++) {
-    if (curproc->locks_held[i] == m) {
+    if (curproc->locks_held[i] == m_phys) {
       curproc->locks_held[i] = curproc->locks_held[--(curproc->num_locks_held)];
       curproc->locks_held[curproc->num_locks_held] = 0;
     }
   }
   m->locked = 0;
   m->pid = 0;
-  wakeup(m);
+  wakeup(m_phys); // Use physical address of m as argument to wakeup
   release(&m->lk);
   return 0;
 }

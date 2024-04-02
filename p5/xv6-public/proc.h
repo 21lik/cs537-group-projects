@@ -42,25 +42,25 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
 struct proc {
-  uint sz;                               // Size of process memory (bytes)
-  pde_t* pgdir;                          // Page table
-  char *kstack;                          // Bottom of kernel stack for this process
-  enum procstate state;                  // Process state
-  int pid;                               // Process ID
-  struct proc *parent;                   // Parent process
-  struct trapframe *tf;                  // Trap frame for current syscall
-  struct context *context;               // swtch() here to run process
-  void *chan;                            // If non-zero, sleeping on chan
-  int killed;                            // If non-zero, have been killed
-  struct file *ofile[NOFILE];            // Open files
-  struct inode *cwd;                     // Current directory
-  char name[MAXPROCNAMELEN];             // Process name (debugging)
-  int nclone;                            // Number of clone calls on this proc (for grading)
-  int sleepticks;                        // Number of ticks left the process should sleep for
-  mutex *locks_held[MAXMUTEXLOCKSHELD];  // Mutex locks held by the process/thread
-  int num_locks_held;                    // Num mutex locks held by the process/thread
-  int nice;                              // Nice value (higher nice = lower priority)
-  int elevated_nice;                     // Elevated nice value (updated in scheduler, used for lock holders)
+  uint sz;                              // Size of process memory (bytes)
+  pde_t *pgdir;                         // Page table
+  char *kstack;                         // Bottom of kernel stack for this process
+  enum procstate state;                 // Process state
+  int pid;                              // Process ID
+  struct proc *parent;                  // Parent process
+  struct trapframe *tf;                 // Trap frame for current syscall
+  struct context *context;              // swtch() here to run process
+  void *chan;                           // If non-zero, sleeping on chan
+  int killed;                           // If non-zero, have been killed
+  struct file *ofile[NOFILE];           // Open files
+  struct inode *cwd;                    // Current directory
+  char name[MAXPROCNAMELEN];            // Process name (debugging)
+  int nclone;                           // Number of clone calls on this proc (for grading)
+  int sleepticks;                       // Number of ticks left the process should sleep for
+  void *locks_held[MAXMUTEXLOCKSHELD];  // Mutex locks held by the process/thread
+  int num_locks_held;                   // Num mutex locks held by the process/thread
+  int nice;                             // Nice value (higher nice = lower priority)
+  int elevated_nice;                    // Elevated nice value (updated in scheduler, used for lock holders)
 };
 typedef struct {
   struct spinlock lock;
