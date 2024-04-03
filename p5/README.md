@@ -2,7 +2,7 @@ Names: Kevin Li, Xuyang Liu
 CS Logins: kjl, xuyang
 WiscIDs: 9083145475, 9082556052
 Emails: kjli@wisc.edu, xliu958@wisc.edu
-Status: To our knowledge, the code is complete and consistently works for all tests except for test 2 and 10. Test 2 fails on the VSCode terminal, but it succeeds in our built-in/MobaX terminals. Test 10 usually passes, but occasionally it fails. These bugs are rooted in either the machines, our code, or the test files themselves.
+Status: To our knowledge, the code is complete and consistently works for all tests except for test 2, 10, and 11. Test 2 fails on the VSCode terminal, but it succeeds in our built-in/MobaX terminals. Tests 10 and 11 usually pass, but occasionally they fail. These bugs are rooted in either the machines, our code, or the test files themselves.
 Files changed:
     defs.h: Added walkpgdir function header
     Makefile: Added mutex.o in OBJS and ULIB, mutex.c in EXTRAS
