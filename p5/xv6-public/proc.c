@@ -402,7 +402,7 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
 
-  int minnice = 19;
+  int minnice;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -451,7 +451,7 @@ findminnice(void)
     // Set elevated nice value
     p->elevated_nice = p->nice;
     for(int i = 0; i < p->num_locks_held; i++) {
-      struct mutex *lock = p->locks_held[i];
+      void *lock = p->locks_held[i];
       for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
         if(q->state == SLEEPING && q->chan == lock && q->nice < p->elevated_nice)
           p->elevated_nice = q->nice;
