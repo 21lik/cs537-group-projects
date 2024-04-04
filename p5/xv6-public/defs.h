@@ -114,6 +114,7 @@ struct proc*    myproc();
 void            pinit(void);
 void            procdump(void);
 void            scheduler(void) __attribute__((noreturn));
+int             findminnice(void);
 void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);

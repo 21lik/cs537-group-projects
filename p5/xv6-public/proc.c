@@ -402,31 +402,16 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
 
+  int minnice = 19;
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process with min nice value to run.
     acquire(&ptable.lock);
-    int minnice = 19;
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
-      // Set elevated nice value
-      p->elevated_nice = p->nice;
-      for(int i = 0; i < p->num_locks_held; i++) {
-        struct mutex *lock = p->locks_held[i];
-        for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
-          if(q->state == SLEEPING && q->chan == lock && q->nice < p->elevated_nice)
-            p->elevated_nice = q->nice;
-        }
-      }
-
-      if (p->elevated_nice < minnice)
-        minnice = p->elevated_nice;
-    }
-
+    // Find the min nice value.
+    minnice = findminnice();
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if (p->state != RUNNABLE || p->elevated_nice > minnice)
         continue;
@@ -444,10 +429,39 @@ scheduler(void)
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+
+      // Since the scheduler comes back where it left off,
+      // we need to find the minnice again.
+      minnice = findminnice();
     }
     release(&ptable.lock);
-
   }
+}
+
+// Reset the elevated nice values of each process
+// and return the minimum.
+int
+findminnice(void)
+{
+  int minnice = 19;
+  for(struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    // Set elevated nice value
+    p->elevated_nice = p->nice;
+    for(int i = 0; i < p->num_locks_held; i++) {
+      struct mutex *lock = p->locks_held[i];
+      for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
+        if(q->state == SLEEPING && q->chan == lock && q->nice < p->elevated_nice)
+          p->elevated_nice = q->nice;
+      }
+    }
+
+    if (p->elevated_nice < minnice)
+      minnice = p->elevated_nice;
+  }
+  return minnice;
 }
 
 // Enter scheduler.  Must hold only ptable.lock
