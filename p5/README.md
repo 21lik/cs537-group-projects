@@ -7,7 +7,7 @@ WiscIDs: 9083145475, 9082556052
 Emails: kjli@wisc.edu, xliu958@wisc.edu
 
 Status: To our knowledge, the code is complete and consistently works for all tests except for test 2, 10, and 11. Test 2 fails on the VSCode terminal, but it succeeds in our built-in/MobaX terminals. Tests 10 and 11 usually pass, but occasionally they fail. These bugs are rooted in either the machines, our code, or the test files themselves.
-Update: we found out that it was due to an oversight while revising the scheduler; we had forgotten that the scheduler continues where it left off in the code during a context switch. In a non-faulty machine/terminal, all tests usually tests, but test 10 still sometimes fails.
+Update: we found out that it was due to an oversight while revising the scheduler; we had forgotten that the scheduler continues where it left off in the code during a context switch. In a non-faulty machine/terminal, all tests usually succeed, but test 10 still sometimes fails.
 
 Files changed:
 <ul>
