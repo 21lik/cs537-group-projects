@@ -16,12 +16,59 @@ struct kv_store {
     int size;
 
 	index_t *indeces; // Hashed keys
-	struct value_node *v_head; // Values, using a linked list/stack
+	struct value_node **v_head; // Values, using a linked list/stack for each index
     pthread_mutex_t **v_locks; // Locks, one for each index
 }; // TODO: init a shared struct (name = hashtable), use
 
+struct kv_store *hashtable = NULL;
+int num_threads = 0;
+
 int init_kv_store(int size) {
 	// TODO: implement
+    hashtable = malloc(sizeof(struct kv_store));
+    hashtable->size = size;
+    hashtable->indeces = malloc(sizeof(index_t) * size);
+    hashtable->v_head = malloc(sizeof(struct value_node*) * size);
+    hashtable->v_locks = malloc(sizeof(pthread_mutex_t*) * size);
+    for (int i = 0; i < size; i++) {
+        hashtable->indeces[i] = i;
+        hashtable->v_head[i] = NULL; // No nodes at start
+        hashtable->v_locks[i] = malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(hashtable->v_locks[i], NULL);
+    }
+    return 0;
+}
+
+int free_linked_list(struct value_node *list) {
+    while (list != NULL) {
+        struct value_node *temp = list;
+        list = list->next;
+        temp->k = 0;
+        temp->v = 0;
+        temp->next = NULL;
+        free(temp);
+    }
+    return 0;
+}
+
+int free_kv_store() {
+    for (int i = 0; i < hashtable->size; i++) {
+        hashtable->indeces[i] = 0;
+        free_linked_list(hashtable->v_head[i]);
+        hashtable->v_head[i] = NULL;
+        pthread_mutex_destroy(hashtable->v_locks[i]);
+        free(hashtable->v_locks[i]);
+        hashtable->v_locks[i] = NULL;
+    }
+    free(hashtable->indeces);
+    hashtable->indeces = NULL;
+    free(hashtable->v_head);
+    hashtable->v_head = NULL;
+    free(hashtable->v_locks);
+    hashtable->v_locks = NULL;
+    free(hashtable);
+    hashtable = NULL;
+    return 0;
 }
 
 int put(key_type k, value_type v) {
@@ -37,11 +84,11 @@ int put(key_type k, value_type v) {
         }
     }
     if (!found_key) {
-        struct value_node *new_node = mmap(NULL, sizeof(struct value_node), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0); // TODO: fix flags, or use something other than mmap
+        struct value_node *new_node = malloc(sizeof(struct value_node));
         new_node->k = k;
         new_node->v = v;
         new_node->next = hashtable->v_head;
-        hashtable->v_head = new_node;
+        hashtable->v_head = new_node; // Functions like a stack
     }
     pthread_mutex_unlock(hashtable->v_locks[index]);
     return 0;
@@ -62,18 +109,29 @@ int get(key_type k) {
     return output;
 }
 
-int main(int argc, int[] argv) {
+int main(int argc, int argv[]) {
     if (argc != 5) {
         printf("Usage: ./server -n <number of server threads> -s <initial hashtable size>\n");
         return -1;
     }
     int n = 0, s = 0;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0)
             n = atoi(argv[++i]);
         else if (strcmp(argv[i], "-s") == 0)
             s = atoi(argv[++i]);
     }
 
-    // TODO: create threads, hashtable
+    init_kv_store(s);
+
+    // TODO: create threads, fetch requests from ring buffer, update client request completion status
+
+
+
+
+
+
+    // Free memory at the end
+    free_kv_store();
+    return 0;
 }
