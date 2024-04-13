@@ -6,12 +6,19 @@
 #include <sys/mman.h>
 #include "common.h"
 
+/**
+ * A linked list node representing a key-value pair.
+*/
 struct value_node {
     key_type k;
     value_type v;
     struct value_node *next;
 };
 
+/**
+ * A hashtable structure that uses chaining to handle collisions.
+ * Each bucket is protected by a mutex lock.
+*/
 struct kv_store {
     int size;
 
@@ -23,8 +30,13 @@ struct kv_store {
 struct kv_store *hashtable = NULL;
 int num_threads = 0;
 
+/**
+ * Initialize the hashtable structure.
+ * @param size the number of indeces of the hashtable.
+ * @return 0 on success.
+*/
 int init_kv_store(int size) {
-	// TODO: implement
+	// TODO: test
     hashtable = malloc(sizeof(struct kv_store));
     hashtable->size = size;
     hashtable->indeces = malloc(sizeof(index_t) * size);
@@ -39,6 +51,11 @@ int init_kv_store(int size) {
     return 0;
 }
 
+/**
+ * Free the linked list of key-value pair nodes.
+ * @param list a pointer to the head node of the linked list.
+ * @return 0 on success.
+*/
 int free_linked_list(struct value_node *list) {
     while (list != NULL) {
         struct value_node *temp = list;
@@ -51,6 +68,10 @@ int free_linked_list(struct value_node *list) {
     return 0;
 }
 
+/**
+ * Free the hashtable structure.
+ * @return 0 on success.
+*/
 int free_kv_store() {
     for (int i = 0; i < hashtable->size; i++) {
         hashtable->indeces[i] = 0;
@@ -71,8 +92,16 @@ int free_kv_store() {
     return 0;
 }
 
+/**
+ * Put the key-value pair into the hashtable, or replace the value if the key
+ * is already present. Since chaining with linked lists is used, resizing is
+ * unnecessary.
+ * @param k the key.
+ * @param v the value.
+ * @return 0 on success.
+*/
 int put(key_type k, value_type v) {
-	// TODO: implement
+	// TODO: test
     int index = hash_function(k, hashtable->size);
     bool found_key = false;
     pthread_mutex_lock(hashtable->v_locks[index]);
@@ -94,8 +123,14 @@ int put(key_type k, value_type v) {
     return 0;
 }
 
+/**
+ * Get the value with the given key from the hashtable.
+ * The key-value pair is NOT deleted.
+ * @param k the key
+ * @return the corresponding value
+*/
 int get(key_type k) {
-	// TODO: implement
+	// TODO: test
     int index = hash_function(k, hashtable->size);
     int output = 0;
     pthread_mutex_lock(hashtable->v_locks[index]);
