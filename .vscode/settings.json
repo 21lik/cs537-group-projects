@@ -22,6 +22,18 @@
         "initializer_list": "c",
         "utility": "c",
         "ring_buffer.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "*.tcc": "c",
+        "functional": "c",
+        "memory": "c",
+        "tuple": "c",
+        "istream": "c",
+        "limits": "c",
+        "mutex": "c",
+        "ostream": "c",
+        "numeric": "c",
+        "sstream": "c",
+        "stop_token": "c",
+        "streambuf": "c"
     }
 }

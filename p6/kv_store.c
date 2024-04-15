@@ -100,14 +100,13 @@ int free_kv_store() {
  * unnecessary.
  * @param k the key.
  * @param v the value.
- * @return 0 on success.
 */
-int put(key_type k, value_type v) {
+void put(key_type k, value_type v) {
 	// TODO: test
     int index = hash_function(k, hashtable->size);
     bool found_key = false;
     pthread_mutex_lock(hashtable->v_locks[index]);
-    for (struct keyvalue_node *this_node = hashtable->v_head; this_node != NULL; this_node = this_node->next) {
+    for (struct keyvalue_node *this_node = hashtable->v_head[index]; this_node != NULL; this_node = this_node->next) {
         if (this_node->k == k) {
             this_node->v = v;
             found_key = true;
@@ -118,11 +117,11 @@ int put(key_type k, value_type v) {
         struct keyvalue_node *new_node = malloc(sizeof(struct keyvalue_node));
         new_node->k = k;
         new_node->v = v;
-        new_node->next = hashtable->v_head;
-        hashtable->v_head = new_node; // Functions like a stack
+        new_node->next = hashtable->v_head[index];
+        hashtable->v_head[index] = new_node; // Functions like a stack
     }
     pthread_mutex_unlock(hashtable->v_locks[index]);
-    return 0;
+    return;
 }
 
 /**
@@ -131,12 +130,12 @@ int put(key_type k, value_type v) {
  * @param k the key
  * @return the corresponding value
 */
-int get(key_type k) {
+value_type get(key_type k) {
 	// TODO: test
     int index = hash_function(k, hashtable->size);
-    int output = 0;
+    value_type output = 0;
     pthread_mutex_lock(hashtable->v_locks[index]);
-    for (struct keyvalue_node *this_node = hashtable->v_head; this_node != NULL; this_node = this_node->next) {
+    for (struct keyvalue_node *this_node = hashtable->v_head[index]; this_node != NULL; this_node = this_node->next) {
         if (this_node->k == k) {
             output = this_node->v;
             break;
@@ -146,46 +145,48 @@ int get(key_type k) {
     return output;
 }
 
-void *thread_function(struct ring *r) {
+void *thread_function(void *arg) {
+    struct ring *r = (struct ring*) arg; // TODO: change if we're going to use a thread context for param arg instead
     struct buffer_descriptor bd;
     while (true) {
         // TODO: test, make sure this works
         ring_get(r, &bd);
-        int output;
+        struct buffer_descriptor *result = (struct buffer_descriptor*) (((void*) r) + bd.res_off); // TODO: get shared memory region start
+        memcpy(result, &bd, sizeof(struct buffer_descriptor));
         if (bd.req_type == PUT) {
-            output = put(bd.k, bd.v);
+            put(bd.k, bd.v);
         }
         else if (bd.req_type == GET) {
-            output = get(bd.k);
+            result->v = get(bd.k);
         }
         else {
             printf("ERROR: invalid request type detected by server.\n");
-            return -1;
+            return (void*) -1;
         }
-        struct buffer_descriptor *result = (struct buffer_descriptor*) (((void*) r) + bd.res_off); // TODO: get shared memory region start
-        memcpy(result, output, sizeof(struct buffer_descriptor));
         result->ready = 1;
     }
 }
 
-int main(int argc, int argv[]) {
-    if (argc != 5) {
+int main(int argc, char *argv[]) {
+    if (argc != 5) { // TODO: we will need to change because it seems that the program parses the args differently; an option and its corresponding value are in the same argv entry, and -v might also appear
         printf("Usage: ./server -n <number of server threads> -s <initial hashtable size>\n");
         return -1;
     }
     int n = 0, s = 0;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-n") == 0)
+        if (strcmp(argv[i], "-n") == 0) {
             n = atoi(argv[++i]);
-        else if (strcmp(argv[i], "-s") == 0)
+        }
+        else if (strcmp(argv[i], "-s") == 0) {
             s = atoi(argv[++i]);
+        }
     }
 
     init_kv_store(s);
 
     // TODO: fix below
 
-    
+    int win_size = 10; // TODO: placeholder value, replace
     int shm_size = sizeof(struct ring) + 
 		num_threads * win_size * sizeof(struct buffer_descriptor);
 	
@@ -207,10 +208,10 @@ int main(int argc, int argv[]) {
     // TODO: create threads, fetch requests from ring buffer, update client request completion status
     
     for (int i = 0; i < n; i++) {
-        pthread_create(&threads[i], NULL, &thread_function, r);
+        pthread_create(&threads[i], NULL, &thread_function, (void*) r);
     }
     for (int i = 0; i < n; i++) {
-        pthread_join(&threads[i], NULL); // TODO: do we want this (wait for threads to finish), have main thread go to sleep, or have main thread return?
+        pthread_join(threads[i], NULL); // TODO: do we want this (wait for threads to finish), have main thread go to sleep, or have main thread return?
     }
 
 
