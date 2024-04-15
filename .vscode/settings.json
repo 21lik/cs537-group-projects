@@ -17,6 +17,11 @@
         "defs.h": "c",
         "common.h": "c",
         "stdlib.h": "c",
-        "mman.h": "c"
+        "mman.h": "c",
+        "array": "c",
+        "initializer_list": "c",
+        "utility": "c",
+        "ring_buffer.h": "c",
+        "stdbool.h": "c"
     }
 }
