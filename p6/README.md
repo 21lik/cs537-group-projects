@@ -6,11 +6,13 @@ WiscIDs: 9083145475, 9082556052
 
 Emails: kjli@wisc.edu, xliu958@wisc.edu
 
-Status: 
+Status: The program compiles and works consistently for tests 1-4. However, test 5 sometimes times out, while test 6 always times out. This may be due to slow machines, a race condition in our code, or another unforseen bug.
 
 Files changed:
 <ul>
-    <li>To be determined...</li>
+    <li>kv_store.c: Implemented server main function, kv_store structure, methods.</li>
+    <li>ring_buffer.c: Implemented ring buffer methods.</li>
+    <li>ring_buffer.h: Added semaphores and mutex lock to ring structure.</li>
 </ul>
 
 # Workload Generator
