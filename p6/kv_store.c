@@ -30,10 +30,9 @@ struct kv_store {
     int size;
 	struct keyvalue_node **v_head; // Key-value pairs, using a linked list/stack for each index
     pthread_mutex_t **v_locks; // Locks, one for each index
-}; 
-// TODO: we may want to switch to stack-allocated memory
+};
 
-struct kv_store *hashtable = NULL;
+struct kv_store hashtable;
 int num_threads = 0;
 //pthread_t threads[MAX_THREADS];
 char shm_file[] = "shmem_file";
@@ -44,15 +43,13 @@ char shm_file[] = "shmem_file";
  * @return 0 on success.
 */
 int init_kv_store(int size) {
-	// TODO: test
-    hashtable = malloc(sizeof(struct kv_store));
-    hashtable->size = size;
-    hashtable->v_head = malloc(sizeof(struct value_node*) * size);
-    hashtable->v_locks = malloc(sizeof(pthread_mutex_t*) * size);
+    hashtable.size = size;
+    hashtable.v_head = malloc(sizeof(struct value_node*) * size);
+    hashtable.v_locks = malloc(sizeof(pthread_mutex_t*) * size);
     for (int i = 0; i < size; i++) {
-        hashtable->v_head[i] = NULL; // No nodes at start
-        hashtable->v_locks[i] = malloc(sizeof(pthread_mutex_t));
-        pthread_mutex_init(hashtable->v_locks[i], NULL);
+        hashtable.v_head[i] = NULL; // No nodes at start
+        hashtable.v_locks[i] = malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(hashtable.v_locks[i], NULL);
     }
     return 0;
 }
@@ -75,23 +72,21 @@ int free_linked_list(struct keyvalue_node *list) {
 }
 
 /**
- * Free the hashtable structure.
+ * Free the elements in the hashtable structure.
  * @return 0 on success.
 */
 int free_kv_store() {
-    for (int i = 0; i < hashtable->size; i++) {
-        free_linked_list(hashtable->v_head[i]);
-        hashtable->v_head[i] = NULL;
-        pthread_mutex_destroy(hashtable->v_locks[i]);
-        free(hashtable->v_locks[i]);
-        hashtable->v_locks[i] = NULL;
+    for (int i = 0; i < hashtable.size; i++) {
+        free_linked_list(hashtable.v_head[i]);
+        hashtable.v_head[i] = NULL;
+        pthread_mutex_destroy(hashtable.v_locks[i]);
+        free(hashtable.v_locks[i]);
+        hashtable.v_locks[i] = NULL;
     }
-    free(hashtable->v_head);
-    hashtable->v_head = NULL;
-    free(hashtable->v_locks);
-    hashtable->v_locks = NULL;
-    free(hashtable);
-    hashtable = NULL;
+    free(hashtable.v_head);
+    hashtable.v_head = NULL;
+    free(hashtable.v_locks);
+    hashtable.v_locks = NULL;
     return 0;
 }
 
@@ -103,11 +98,10 @@ int free_kv_store() {
  * @param v the value.
 */
 void put(key_type k, value_type v) {
-	// TODO: test
-    int index = hash_function(k, hashtable->size);
+    int index = hash_function(k, hashtable.size);
     bool found_key = false;
-    pthread_mutex_lock(hashtable->v_locks[index]);
-    for (struct keyvalue_node *this_node = hashtable->v_head[index]; this_node != NULL; this_node = this_node->next) {
+    pthread_mutex_lock(hashtable.v_locks[index]);
+    for (struct keyvalue_node *this_node = hashtable.v_head[index]; this_node != NULL; this_node = this_node->next) {
         if (this_node->k == k) {
             this_node->v = v;
             found_key = true;
@@ -118,10 +112,10 @@ void put(key_type k, value_type v) {
         struct keyvalue_node *new_node = malloc(sizeof(struct keyvalue_node));
         new_node->k = k;
         new_node->v = v;
-        new_node->next = hashtable->v_head[index];
-        hashtable->v_head[index] = new_node; // Functions like a stack
+        new_node->next = hashtable.v_head[index];
+        hashtable.v_head[index] = new_node; // Functions like a stack
     }
-    pthread_mutex_unlock(hashtable->v_locks[index]);
+    pthread_mutex_unlock(hashtable.v_locks[index]);
     return;
 }
 
@@ -132,27 +126,25 @@ void put(key_type k, value_type v) {
  * @return the corresponding value
 */
 value_type get(key_type k) {
-	// TODO: test
-    int index = hash_function(k, hashtable->size);
+    int index = hash_function(k, hashtable.size);
     value_type output = 0;
-    pthread_mutex_lock(hashtable->v_locks[index]);
-    for (struct keyvalue_node *this_node = hashtable->v_head[index]; this_node != NULL; this_node = this_node->next) {
+    pthread_mutex_lock(hashtable.v_locks[index]);
+    for (struct keyvalue_node *this_node = hashtable.v_head[index]; this_node != NULL; this_node = this_node->next) {
         if (this_node->k == k) {
             output = this_node->v;
             break;
         }
     }
-    pthread_mutex_unlock(hashtable->v_locks[index]);
+    pthread_mutex_unlock(hashtable.v_locks[index]);
     return output;
 }
 
 void *thread_function(void *arg) {
-    struct ring *r = (struct ring*) arg; // TODO: change if we're going to use a thread context for param arg instead
+    struct ring *r = (struct ring*) arg;
     struct buffer_descriptor bd;
     while (true) {
-        // TODO: test, make sure this works
         ring_get(r, &bd);
-        struct buffer_descriptor *result = (struct buffer_descriptor*) (((void*) r) + bd.res_off); // TODO: get shared memory region start
+        struct buffer_descriptor *result = (struct buffer_descriptor*) (arg + bd.res_off);
         memcpy(result, &bd, sizeof(struct buffer_descriptor));
         if (bd.req_type == PUT) {
             put(bd.k, bd.v);
@@ -191,7 +183,7 @@ int main(int argc, char *argv[]) {
 
     // Get a pointer to the shared mmap memory
 	char *mem = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
-	if (mem == (void*) -1) 
+	if (mem == (void*) -1)
 		perror("mmap");
 
 	// mmap dups the fd, no longer needed
@@ -205,10 +197,10 @@ int main(int argc, char *argv[]) {
         pthread_create(&threads[i], NULL, &thread_function, (void*) r);
     }
     for (int i = 0; i < n; ++i) {
-        pthread_join(threads[i], NULL); // TODO: do we want this (wait for threads to finish), have main thread go to sleep, or have main thread return?
+        pthread_join(threads[i], NULL); // Prevent main thread from freeing the hashtable early
     }
 
-    // Free memory at the end // TODO: since function will run indefinitely, should we use stack allocated instead?
+    // Free memory at the end (unused)
     free_kv_store();
     return 0;
 }
