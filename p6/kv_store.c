@@ -169,10 +169,6 @@ void *thread_function(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 5) { // TODO: we will need to change because it seems that the program parses the args differently; an option and its corresponding value are in the same argv entry, and -v might also appear
-        printf("Usage: ./server -n <number of server threads> -s <initial hashtable size>\n");
-        return -1;
-    }
     int n = 0, s = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0) {
@@ -182,48 +178,28 @@ int main(int argc, char *argv[]) {
             s = atoi(argv[++i]);
         }
     }
-    // int op;
-    // while ((op = getopt(argc, argv, "n:s:")) != -1) {
-    //     switch (op) {
-    //         case 'n':
-    //             n = atoi(optarg);
-    //             break;
-    //         case 's':
-    //             s = atoi(optarg);
-    //             break;
-    //         default:
-    //             fprintf(stderr, "Usage: %s -n <number of server threads> -s <initial hashtable size>\n", argv[0]);
-    //             return -1;
-    //     }
-    // }
 
     init_kv_store(s);
 
-    // TODO: fix below
-
-    int win_size = 10; // TODO: placeholder value, replace
-    int shm_size = sizeof(struct ring) + 
-		num_threads * win_size * sizeof(struct buffer_descriptor);
-	
 	int fd = open(shm_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 	if (fd < 0)
 		perror("open");
 
-	if (ftruncate(fd, shm_size) == -1)
-	    perror("ftruncate");
+    // Get the file size
+    struct stat statbuf;
+    fstat(fd, &statbuf);
 
-	char *mem = mmap(NULL, shm_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    // Get a pointer to the shared mmap memory
+	char *mem = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mem == (void*) -1) 
 		perror("mmap");
-    
 
 	// mmap dups the fd, no longer needed
 	close(fd);
 
 	struct ring *r = (struct ring*) mem;
-    // TODO: fix above
 
-    // TODO: create threads, fetch requests from ring buffer, update client request completion status
+    // Create threads, fetch requests from ring buffer, update client request completion status
     pthread_t threads[n];
     for (int i = 0; i < n; ++i) {
         pthread_create(&threads[i], NULL, &thread_function, (void*) r);
@@ -231,7 +207,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < n; ++i) {
         pthread_join(threads[i], NULL); // TODO: do we want this (wait for threads to finish), have main thread go to sleep, or have main thread return?
     }
-
 
     // Free memory at the end // TODO: since function will run indefinitely, should we use stack allocated instead?
     free_kv_store();
