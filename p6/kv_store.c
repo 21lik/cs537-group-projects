@@ -182,19 +182,17 @@ int main(int argc, char *argv[]) {
     fstat(fd, &statbuf);
 
     // Get a pointer to the shared mmap memory
-	char *mem = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	void *mem = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mem == (void*) -1)
 		perror("mmap");
 
 	// mmap dups the fd, no longer needed
 	close(fd);
 
-	struct ring *r = (struct ring*) mem;
-
     // Create threads, fetch requests from ring buffer, update client request completion status
     pthread_t threads[n];
     for (int i = 0; i < n; ++i) {
-        pthread_create(&threads[i], NULL, &thread_function, (void*) r);
+        pthread_create(&threads[i], NULL, &thread_function, mem);
     }
     for (int i = 0; i < n; ++i) {
         pthread_join(threads[i], NULL); // Prevent main thread from freeing the hashtable early
