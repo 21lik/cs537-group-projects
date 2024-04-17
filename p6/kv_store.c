@@ -128,14 +128,12 @@ void put(key_type k, value_type v) {
 value_type get(key_type k) {
     int index = hash_function(k, hashtable.size);
     value_type output = 0;
-    pthread_mutex_lock(hashtable.v_locks[index]);
     for (struct keyvalue_node *this_node = hashtable.v_head[index]; this_node != NULL; this_node = this_node->next) {
         if (this_node->k == k) {
             output = this_node->v;
             break;
         }
     }
-    pthread_mutex_unlock(hashtable.v_locks[index]);
     return output;
 }
 
