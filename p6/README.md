@@ -6,7 +6,7 @@ WiscIDs: 9083145475, 9082556052
 
 Emails: kjli@wisc.edu, xliu958@wisc.edu
 
-Status: The program compiles and works consistently for tests 1-5. However, test 6 sometimes times out. This may be due to slow machines, a race condition in our code, or another unforseen bug.
+Status: The program compiles and works consistently for tests 1-6, provided the machine isn't too slow. Test 6 has a speedup of about 30.
 
 Files changed:
 <ul>
