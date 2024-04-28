@@ -1,5 +1,8 @@
+#include <stdlib.h>
 #include <stdio.h>
-#include <wfs.h>
+#include <string.h>
+#include <unistd.h>
+#include "wfs.h"
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -31,7 +34,7 @@ int main(int argc, char *argv[]) {
     int fd = open(d, O_RDWR);
     int sb_size = BLOCK_SIZE, ibitmap_size = i, dbitmap_size = b, inodes_size = i * BLOCK_SIZE, data_blocks_size = b * BLOCK_SIZE; // Use bit operations for bitmaps
     int filesystem_size = sb_size + ibitmap_size + dbitmap_size + inodes_size + data_blocks_size;
-    void *addr = mmap(NULL, filesystem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    void *addr = mmap(NULL, filesystem_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
 
     if (addr == MAP_FAILED) {
@@ -50,7 +53,7 @@ int main(int argc, char *argv[]) {
     sb->d_blocks_ptr = sb->i_blocks_ptr + inodes_size;
 
     // Write root inode
-    struct wfs_inode *root_inode = ((void*) sb) + sb->i_blocks_ptr; // TODO: implement allocate_inode() (in shared file, so wfs.c can use as well), make sure it looks for inode numbers in order (for this one, must get inode 0)
+    struct wfs_inode *root_inode = (struct wfs_inode*) (((char*) sb) + sb->i_blocks_ptr); // TODO: implement allocate_inode() (in shared file, so wfs.c can use as well), make sure it looks for inode numbers in order (for this one, must get inode 0)
     root_inode->num = 0;
     root_inode->mode = S_IFDIR & S_IRWXU & S_IRWXG & S_IRWXO;
     root_inode->uid = getuid();
@@ -61,7 +64,7 @@ int main(int argc, char *argv[]) {
     root_inode->atim = curr_time;
     root_inode->mtim = curr_time;
     root_inode->ctim = curr_time;
-    *(((char*) sb) + sb->i_bitmap_ptr) = (char) 0b10000000;
+    *(((char*) sb) + sb->i_bitmap_ptr) = (char) 128; // 0b10000000
 
     return 0;
 }
