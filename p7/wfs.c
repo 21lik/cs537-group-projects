@@ -2,8 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <wfs.h>
 
 // TODO: finish methods
+
+struct wfs_inode *allocate_inode() {
+    // TODO: implement
+}
 
 static int wfs_getattr(const char *path, struct stat *stbuf) {
     printf("Running wfs_getattr\n");

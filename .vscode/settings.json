@@ -35,6 +35,9 @@
         "sstream": "c",
         "stop_token": "c",
         "streambuf": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "wfs.h": "c",
+        "__mode_t.h": "c",
+        "unistd.h": "c"
     }
 }

@@ -10,5 +10,7 @@ Status: TBD...
 
 Files changed:
 <ul>
+    <li>mkfs.c: Added file, main function for initializing filesystem.</li>
+    <li>wfs.c: TBD</li>
     <li>TBD...</li>
 </ul>
