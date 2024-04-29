@@ -32,15 +32,19 @@ int main(int argc, char *argv[]) {
 
     // Round number of blocks up to nearest multiple of 32
     if (i % 32 != 0)
-        i = i + 32 - (i % 31);
+        i = i + 32 - (i % 32);
     if (b % 32 != 0)
-        b = b + 32 - (b % 31);
+        b = b + 32 - (b % 32);
     
     printf("inode count: %d\ndata block count: %d\n", i, b); // TODO: debug
 
     // Open disk image file, mmap onto memory
     int fd = open(d, O_RDWR);
-    off_t sb_size = sizeof(struct wfs_sb), ibitmap_size = i / 8, dbitmap_size = b / 8, inodes_size = i * BLOCK_SIZE, data_blocks_size = b * BLOCK_SIZE; // Use bit operations for bitmaps
+    off_t sb_size = sizeof(struct wfs_sb);
+    size_t ibitmap_size = (i + 7) / 8;
+    size_t dbitmap_size = (b + 7) / 8;
+    size_t inodes_size = i * BLOCK_SIZE;
+    size_t data_blocks_size = b * BLOCK_SIZE; // Use bit operations for bitmaps
     size_t filesystem_size = sb_size + ibitmap_size + dbitmap_size + inodes_size + data_blocks_size;
     struct stat statbuf;
     fstat(fd, &statbuf);
@@ -71,7 +75,7 @@ int main(int argc, char *argv[]) {
     sb->d_blocks_ptr = sb->i_blocks_ptr + inodes_size;
 
     // Write root inode
-    struct wfs_inode *root_inode = (struct wfs_inode*) (sb + sb->i_blocks_ptr); // TODO: implement allocate_inode() (in shared file, so wfs.c can use as well), make sure it looks for inode numbers in order (for this one, must get inode 0)
+    struct wfs_inode *root_inode = (struct wfs_inode*) (addr + sb->i_blocks_ptr); // TODO: implement allocate_inode() (in shared file, so wfs.c can use as well), make sure it looks for inode numbers in order (for this one, must get inode 0)
     root_inode->num = 0;
     root_inode->mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
     root_inode->uid = getuid();
