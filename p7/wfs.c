@@ -253,6 +253,8 @@ int main(int argc, char *argv[]) {
     struct stat statbuf;
     fstat(disk_fd, &statbuf);
 
+    printf("statbuf.st_size: %ld\n", statbuf.st_size); // TODO: debug
+
     // Get a pointer to the shared mmap memory
 	void *addr = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, disk_fd, 0);
 	close(disk_fd);
