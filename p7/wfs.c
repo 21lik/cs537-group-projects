@@ -259,15 +259,22 @@ int main(int argc, char *argv[]) {
 	void *addr = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, disk_fd, 0);
 	close(disk_fd);
 	if (addr == (void*) -1) {
-		printf("Failed to get shared mmap memory\n");
+		printf("Failed to mmap memory\n");
         return 1;
     }
     superblock = addr;
 
+    // Write superblock
+    printf("num inodes in superblock: %ld\n", superblock->num_inodes); // TODO: debug
+    printf("mode of root directory: %d\n", ((struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr))->mode); // TODO: debug
+
     // Adjust the arguments for fuse_main
-    argc -= 1; // Remove disk_path from argc
-    argv[1] = argv[0]; // Shift all arguments to the left
-    memmove(&argv[0], &argv[1], sizeof(char *) * argc);
+    argc--; // Remove disk_path from argc
+    for (int i = 1; i < argc; i++) {
+        argv[i] = argv[i + 1];
+    }
     printf("Calling fuse_main\n"); // TODO: debug
-    return fuse_main(argc, argv, &ops, NULL); // TODO: make sure argc and argv passed are correct
+    int output = fuse_main(argc, argv, &ops, NULL); // TODO: make sure argc and argv passed are correct
+    printf("output=%d\n", output);
+    return output;
 }
