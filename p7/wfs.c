@@ -110,7 +110,7 @@ struct wfs_inode *find_inode_by_path(const char *path, struct wfs_inode *inode) 
     }
 
     free(path_copy);
-    *inode = current_inode; // Copy the found inode to the output parameter
+    *inode = current_inode; // Copy the found inode to the output parameter // TODO: do we need/want this?
     return inode;
 }
 
@@ -149,7 +149,42 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
 
 static int wfs_mkdir(const char* path, mode_t mode) {
     printf("Running wfs_mkdir\n");
-    // TODO: implement
+    // TODO: implement, test
+    struct wfs_inode *parent_inode;
+    char *new_name = rindex(path, '/');
+    if (new_name == NULL) {
+        // Parent is root directory
+        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+    }
+    else {
+        // Parent is a non-root directory, split path into parent path and new directory name
+        *new_name = '\0';
+        new_name++;
+        parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
+    }
+    // Add entry to parent directory
+    struct wfs_dentry *this_dentry = NULL;
+    int new_block_index = parent_inode->size / sizeof(struct wfs_dentry);
+    for (int i = 0; i < new_block_index; i++) {
+        struct wfs_dentry *dblock_ptr = ((char*) parent_inode) + parent_inode->blocks[i];
+        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+            struct wfs_dentry *curr_dentry = dblock_ptr + j;
+            if (curr_dentry->num == 0) {
+                // Blank dentry found
+                this_dentry = curr_dentry;
+                break;
+            }
+        }
+        if (this_dentry != NULL)
+            break;
+    }
+    if (this_dentry == NULL) {
+        // Need to allocate new directory block
+        this_dentry = allocate_dblock(); // TODO: implement
+        // TODO: finish, be sure to store offset in parent_inode->blocks[new_block_index] and update parent_inode->size (and atime, ctime, or mtime if applicable)
+    }
+
+    // TODO: fill this_dentry, allocate and fill inode for that (see mkfs.c root directory initialization for reference)
 
     return 0; // Return 0 on success
 }
