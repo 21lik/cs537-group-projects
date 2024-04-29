@@ -14,75 +14,42 @@ struct wfs_sb *superblock;  // Superblock
 // TODO: finish methods
 struct wfs_inode *allocate_inode() {
 	// TODO: test
-    
+    char *inode_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr;
+    size_t bitmap_size = superblock->num_inodes >> 3; // size in bytes
+    int inode_num = 0;
+    for (int i = 0; i < bitmap_size; i++) {
+        if (*inode_bitmap == (char) -1) // 0b11111111, byte full
+            continue;
 
-    
-    // Calculate the size of the inode bitmap in bytes
-    size_t bitmap_size = (superblock->num_inodes + 7) / 8;
-    char *inode_bitmap = malloc(bitmap_size);
-    if (!inode_bitmap) {
-        perror("Failed to allocate memory for inode bitmap\n");
-        return NULL;
-    }
-
-    // Read the inode bitmap from disk
-    ssize_t bytes_read = pread(disk_fd, inode_bitmap, bitmap_size, superblock->i_bitmap_ptr);
-    if (bytes_read == -1 || (size_t)bytes_read != bitmap_size) {
-        perror("Failed to read inode bitmap from disk\n");
-        free(inode_bitmap);
-        return NULL;
-    }
-
-    size_t inode_index = (size_t)-1;
-    for (size_t i = 0; i < superblock->num_inodes; i++) {
-        size_t byte_index = i / 8;
-        size_t bit_index = i % 8;
-
-        if (!(inode_bitmap[byte_index] & (1 << bit_index))) {
-            inode_index = i;
-            inode_bitmap[byte_index] |= (1 << bit_index); // Mark the inode as used
-            break;
+        // Set available bit, return inode pointer
+        for (int j = 0; j < 8; j++) {
+            if ((*inode_bitmap << j) > 0) { // has 0 in bit j (left-to-right)
+                char bitmask = (char) (1 << (7 - j));
+                *inode_bitmap |= bitmask;
+                inode_num = (i << 3) + j;
+                break;
+            }
         }
     }
 
-    // Write the updated inode bitmap back to the disk
-    ssize_t bytes_written = pwrite(disk_fd, inode_bitmap, bitmap_size, superblock->i_bitmap_ptr);
-    if (bytes_written == -1 || (size_t)bytes_written != bitmap_size) {
-        perror("Failed to write updated inode bitmap to disk\n");
-        free(inode_bitmap);
-        return NULL;
-    }
-    free(inode_bitmap);
-
-    if (inode_index == (size_t)-1) {
+    // No free inode bit found
+    if (inode_num == 0) {
         fprintf(stderr, "No free inodes available\n");
         return NULL;
     }
 
-    // Allocate and initialize the inode structure
-    struct wfs_inode *inode = malloc(sizeof(struct wfs_inode));
-    if (!inode) {
-        perror("Failed to allocate memory for inode\n");
-        return NULL;
-    }
-    memset(inode, 0, sizeof(struct wfs_inode));
-    inode->num = inode_index;
+    // Set inode pointer, values
+    struct wfs_inode *inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr + inode_num);
+    inode->num = inode_num;
     inode->mode = 0;  // Default mode, should be set by caller
     inode->uid = getuid();  // Owner's user ID
     inode->gid = getgid();  // Owner's group ID
-    inode->nlinks = 1;  // Initially one link
-    inode->atim = time(NULL);
-    inode->mtim = time(NULL);
-    inode->ctim = time(NULL);
-
-    // Write the new inode to the correct place on the disk
-    off_t inode_pos = superblock->i_blocks_ptr + inode_index * sizeof(struct wfs_inode);
-    bytes_written = pwrite(disk_fd, inode, sizeof(struct wfs_inode), inode_pos);
-    if (bytes_written == -1 || (size_t)bytes_written != sizeof(struct wfs_inode)) {
-        perror("Failed to write inode to disk");
-        free(inode);
-        return NULL;
-    }
+    inode->size = 0;  // Default empty, should be changed by caller if necessary
+    inode->nlinks = 1;  // Initially one link // TODO: one or zero?
+    time_t curr_time = time(NULL);
+    inode->atim = curr_time;
+    inode->mtim = curr_time;
+    inode->ctim = curr_time;
 
     return inode;
 }

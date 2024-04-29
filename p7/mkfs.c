@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Ensure at least one inode and data block exist for root directory
-    if (i == 0 || d == 0) {
+    if (i <= 0 || d <= 0) {
         printf("Must have at least one inode and data block for root directory\n");
         exit(1); // TODO: return or exit?
     }
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
     root_inode->uid = getuid();
     root_inode->gid = getgid();
     root_inode->size = 0; // TODO: when creating new file/directory, be sure to revise parent directory size (similarly, update file size when writing to file)
-    root_inode->nlinks = 0;
+    root_inode->nlinks = 1; // TODO: one or zero?
     time_t curr_time = time(NULL);
     root_inode->atim = curr_time;
     root_inode->mtim = curr_time;
