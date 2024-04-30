@@ -13,6 +13,21 @@ int disk_fd;  			  // File descriptor
 struct wfs_sb *superblock;  // Superblock
 
 // TODO: finish methods
+
+// Get the address to the inode with the given number.
+struct wfs_inode *get_inode(int num) {
+    return (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr + num);
+}
+
+// Get the data block number for the given data block address.
+// Returns the data block number, or -1 if the address is not in the DATA BLOCKS region.
+int get_data_block_num(void *data_block_addr) {
+    int output = data_block_addr - superblock->d_blocks_ptr;
+    if (output < 0 || output >= superblock->num_data_blocks)
+        return -1;
+    return output;
+}
+
 struct wfs_inode *allocate_inode() {
 	// TODO: test
     char *inode_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr;
@@ -148,7 +163,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     char *new_name = rindex(path, '/');
     if (new_name == NULL) {
         // Parent is root directory
-        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+        parent_inode = get_inode(0);
     }
     else {
         // Parent is a non-root directory, split path into parent path and new directory name
@@ -211,7 +226,7 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     char *new_name = rindex(path, '/');
     if (new_name == NULL) {
         // Parent is root directory
-        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+        parent_inode = get_inode(0);
     }
     else {
         // Parent is a non-root directory, split path into parent path and new directory name
@@ -281,7 +296,7 @@ static int wfs_rmdir(const char *path) {
     char *dir_name = rindex(path, '/');
     if (dir_name == NULL) {
         // Parent is root directory
-        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+        parent_inode = get_inode(0);
     }
     else {
         // Parent is a non-root directory, split path into parent path and new directory name
@@ -300,12 +315,12 @@ static int wfs_rmdir(const char *path) {
             struct wfs_dentry *curr_dentry = dblock_ptr + j;
             if (strcmp(dir_name, curr_dentry->name) == 0) {
                 // Found directory, clear inode and bits, remove directory entry
-                struct wfs_inode *this_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr + curr_dentry->num);
+                struct wfs_inode *this_inode = get_inode(curr_dentry->num);
                 // We assume that the directory is already empty, so we can free all the dentries stored
                 int this_block_count = this_inode->size / sizeof(struct wfs_dentry);
                 for (int k = 0; k < this_block_count; k++) {
-                    int this_datablock_num; // TODO: get datablock number of this_inode->blocks[k] (it's not the dentry num)
-                    
+                    // Clear data blocks, respective bits in data bitmap
+                    int this_datablock_num = get_data_block_num(superblock + this_inode->blocks[k]);
                     int datablock_byte = this_datablock_num / 8;
                     int datablock_offset = this_datablock_num % 8;
                     char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
@@ -315,19 +330,11 @@ static int wfs_rmdir(const char *path) {
                     memset(((char*) superblock) + this_inode->blocks[k], 0, BLOCK_SIZE);
                 }
                 
-                // Clear bits in inode/data bitmaps
+                // Clear bits in inode bitmap
                 int inode_byte = this_inode->num / 8;
                 int inode_offset = this_inode->num % 8;
                 char *this_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr + inode_byte;
                 char bitmask = (char) (1 << (7 - inode_offset));
-                *this_bitmap &= ~bitmask;
-
-                int this_datablock_num; // TODO: get datablock number of this_inode->blocks[k] (it's not the dentry num)
-
-                int datablock_byte = curr_dentry->num / 8;
-                int datablock_offset = curr_dentry->num % 8;
-                this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
-                bitmask = (char) (1 << (7 - datablock_offset));
                 *this_bitmap &= ~bitmask;
 
                 // Clear inode, directory entry
