@@ -22,10 +22,11 @@ struct wfs_inode *get_inode(int num) {
 // Get the data block number for the given data block address.
 // Returns the data block number, or -1 if the address is not in the DATA BLOCKS region.
 int get_data_block_num(void *data_block_addr) {
-    int output = data_block_addr - superblock->d_blocks_ptr;
-    if (output < 0 || output >= superblock->num_data_blocks)
-        return -1;
-    return output;
+	uintptr_t address_offset = (uintptr_t)data_block_addr - ((uintptr_t)superblock + superblock->d_blocks_ptr);
+    if (address_offset >= superblock->num_data_blocks * BLOCK_SIZE) {
+        return -1;  // The address is outside the range of data blocks
+    }
+    return address_offset / BLOCK_SIZE;
 }
 
 // Clear the data blocks stored in the given inode.
@@ -125,89 +126,112 @@ struct wfs_inode *allocate_inode() {
     return inode;
 }
 
-struct wfs_inode *find_inode_by_path(const char *path, struct wfs_inode *inode) {
+struct wfs_inode *find_inode_by_path(const char *path) {
 	// TODO: test
-    char *path_copy = strdup(path); // Create a mutable copy of the path
-    char *token;
-    char *rest = path_copy;
+	struct wfs_inode* current_inode = get_inode(0);
+	if (current_inode == NULL || path == NULL || path[0] == '\0' || path[0] != '/') {
+	    return NULL; // Invalid path or failed to load root inode
+	}
+	char* path_copy = strdup(path);
+	if (path_copy == NULL) return NULL;
+	char* token = strtok(path_copy, "/");
+	    while (token != NULL && current_inode != NULL) {
+	        int found = 0;
+	        // Iterate through directory entries in current inode
+	        for (int i = 0; i < D_BLOCK; i++) {
+	        	if (current_inode->blocks[i] == 0) {
+	                continue; // Skip empty block pointers
+	        	}
+	        	struct wfs_dentry* entries = (struct wfs_dentry*)((char*)superblock + superblock->d_blocks_ptr + current_inode->blocks[i] * BLOCK_SIZE);
+	        	for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+	                if (entries[j].num != 0 && strcmp(entries[j].name, token) == 0) {
+	                    // Found the next inode in the path
+	                    current_inode = get_inode(entries[j].num);
+	                    found = 1;
+	                    break;
+	                }
+	            }
+	            if (found) break; // Stop searching if we've found the next inode
+	        }
+	        if (!found) { // If no entry matches token in current directory
+	            free(path_copy);
+	            return NULL;
+	        }
+	        token = strtok(NULL, "/");
+	    }
+	    free(path_copy);
+	    return current_inode;		
+}
 
-    struct wfs_inode current_inode;
-    // Start with the root inode
-    if (pread(disk_fd, &current_inode, sizeof(struct wfs_inode), superblock->i_blocks_ptr) != sizeof(struct wfs_inode)) {
-        free(path_copy);
-        perror("Error reading root inode\n");
-        return NULL; // Error reading root inode
+int allocate_block() {
+    printf("Allocating a new block\n");
+    char *block_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr;
+    int num_blocks = superblock->num_data_blocks;
+
+    for (int i = 0; i < num_blocks; i++) {
+        int byte_index = i / 8;
+        int bit_index = i % 8;
+
+        // Check if the bit is set (block is used)
+        if (!(block_bitmap[byte_index] & (1 << bit_index))) {
+            // Mark the block as used
+            block_bitmap[byte_index] |= (1 << bit_index);
+            // Optionally, zero out the block (if not handled elsewhere)
+            memset(((char*) superblock) + superblock->d_blocks_ptr + i * BLOCK_SIZE, 0, BLOCK_SIZE);
+            return i; // Return the block index
+        }
     }
 
-    token = strtok_r(rest, "/", &rest);
-    while (token != NULL) {
-        int found = 0;
-        // Read all entries in the current directory
-        for (int i = 0; i < D_BLOCK; i++) { // Assume D_BLOCK is the count of direct blocks
-            if (current_inode.blocks[i] == 0) continue; // No data block assigned
+    fprintf(stderr, "No free blocks available\n");
+    return -1; // No free blocks available
+}
 
-            // Read the directory block
-            struct wfs_dentry entries[BLOCK_SIZE / sizeof(struct wfs_dentry)];
-            if (pread(disk_fd, entries, BLOCK_SIZE, current_inode.blocks[i]) != BLOCK_SIZE) {
-                free(path_copy);
-                perror("Error reading block\n");
-                return NULL; // Error reading block
-            }
+struct wfs_dentry *allocate_dentry(struct wfs_inode *parent_inode) {
+    printf("Allocating new directory entry block\n");
 
-            // Search for the token in the directory entries
-            for (size_t j = 0; j < (BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
-                if (strcmp(entries[j].name, token) == 0) {
-                    // Load the inode for this entry
-                    off_t inode_pos = superblock->i_blocks_ptr + entries[j].num * sizeof(struct wfs_inode);
-                    if (pread(disk_fd, &current_inode, sizeof(struct wfs_inode), inode_pos) != sizeof(struct wfs_inode)) {
-                        free(path_copy);
-                        perror("Error reading inode\n");
-                        return NULL; // Error reading inode
-                    }
-                    found = 1;
-                    break;
-                }
-            }
-
-            if (found) break;
-        }
-
-        if (!found) {
-            free(path_copy);
-            perror("Path component not found\n");
-            return NULL; // Path component not found
-        }
-        token = strtok_r(NULL, "/", &rest);
+    // Check if there is room for a new block pointer in the inode's block array
+    if (parent_inode->size / BLOCK_SIZE >= D_BLOCK) {
+        fprintf(stderr, "No room for new directory block in inode\n");
+        return NULL; // No more blocks can be added
     }
 
-    free(path_copy);
-    *inode = current_inode; // Copy the found inode to the output parameter // TODO: do we need/want this?
-    return inode;
+    // Allocate a new block for the directory entries
+    int new_block_index = allocate_block(); // allocate_block() should return the block index or -1 if failed
+    if (new_block_index == -1) {
+        fprintf(stderr, "Failed to allocate block for new directory entries\n");
+        return NULL;
+    }
+
+    // Calculate the physical address of the new block
+    char *new_block_ptr = ((char*) superblock) + superblock->d_blocks_ptr + new_block_index * BLOCK_SIZE;
+    memset(new_block_ptr, 0, BLOCK_SIZE); // Initialize the block to zero
+
+    // Update the inode to point to the new block
+    parent_inode->blocks[parent_inode->size / BLOCK_SIZE] = new_block_index;
+    parent_inode->size += BLOCK_SIZE; // Update the size to reflect the addition of a new block
+
+    return (struct wfs_dentry *)new_block_ptr;
 }
 
 static int wfs_getattr(const char *path, struct stat *stbuf) {
     printf("Running wfs_getattr\n");
     // Implementation of getattr function to retrieve file attributes
     // Fill stbuf structure with the attributes of the file/directory indicated by path
-    // ...
     memset(stbuf, 0, sizeof(struct stat));
-
-    struct wfs_inode inode;
-    if (find_inode_by_path(path, &inode) == NULL) {
-        return -ENOENT; // No such file or directory
-    }
-
-    stbuf->st_ino = inode.num;
-    stbuf->st_mode = inode.mode;
-    stbuf->st_nlink = inode.nlinks;
-    stbuf->st_uid = inode.uid;
-    stbuf->st_gid = inode.gid;
-    stbuf->st_size = inode.size;
+    struct wfs_inode *inode = find_inode_by_path(path);
+    if (inode == NULL) return -ENOENT;  // No such file or directory
+    // Populate the stat structure
+    stbuf->st_ino = inode->num;
+    stbuf->st_mode = inode->mode;
+    stbuf->st_nlink = inode->nlinks;
+    stbuf->st_uid = inode->uid;
+    stbuf->st_gid = inode->gid;
+    stbuf->st_size = inode->size;
+    stbuf->st_atime = inode->atim;
+    stbuf->st_mtime = inode->mtim;
+    stbuf->st_ctime = inode->ctim;
     stbuf->st_blksize = BLOCK_SIZE;
-    stbuf->st_atime = inode.atim;
-    stbuf->st_mtime = inode.mtim;
-    stbuf->st_ctime = inode.ctim;
-
+    stbuf->st_blocks = (inode->size + 511) / 512;
     return 0;
 }
 
