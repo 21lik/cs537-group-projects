@@ -196,7 +196,7 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     strcpy(this_dentry->name, new_name);
     struct wfs_inode *this_inode = allocate_inode();
     this_dentry->num = this_inode->num;
-    this_inode->mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
+    this_inode->mode = S_IFDIR | mode;
 
     return 0; // Return 0 on success
 }
