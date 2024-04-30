@@ -207,6 +207,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     // Update parent inode
     parent_inode->nlinks++;
     time_t curr_time = time(NULL);
+    parent_inode->atim = curr_time;
     parent_inode->mtim = curr_time;
     parent_inode->ctim = curr_time;
 
@@ -270,6 +271,7 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     // Update parent inode
     parent_inode->nlinks++;
     time_t curr_time = time(NULL);
+    parent_inode->atim = curr_time;
     parent_inode->mtim = curr_time;
     parent_inode->ctim = curr_time;
 
@@ -340,7 +342,14 @@ static int wfs_rmdir(const char *path) {
                 // Clear inode, directory entry
                 memset(this_inode, 0, sizeof(struct wfs_inode));
                 memset(curr_dentry->name, 0, MAX_NAME);
-                
+
+                // Update parent inode
+                parent_inode->nlinks--;
+                time_t curr_time = time(NULL);
+                parent_inode->atim = curr_time;
+                parent_inode->mtim = curr_time;
+                parent_inode->ctim = curr_time;
+
                 return 0; // Return 0 on success
             }
         }
