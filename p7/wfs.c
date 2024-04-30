@@ -159,11 +159,12 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
             return -ENOENT; // No such parent directory
         }
     }
+
     // Add entry to parent directory
     struct wfs_dentry *this_dentry = NULL;
     int new_block_index = parent_inode->size / sizeof(struct wfs_dentry);
     for (int i = 0; i < new_block_index; i++) {
-        struct wfs_dentry *dblock_ptr = ((char*) parent_inode) + parent_inode->blocks[i];
+        struct wfs_dentry *dblock_ptr = ((char*) superblock) + parent_inode->blocks[i];
         for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
             struct wfs_dentry *curr_dentry = dblock_ptr + j;
             if (curr_dentry->num == 0) {
@@ -184,7 +185,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
         if (this_dentry == NULL) {
             return -ENOSPC; // Insufficient disk space
         }
-        parent_inode->blocks[new_block_index] = this_dentry - (parent_inode->blocks + new_block_index);
+        parent_inode->blocks[new_block_index] = ((char*) this_dentry) - superblock;
         parent_inode->size += BLOCK_SIZE;
     }
 
@@ -221,11 +222,12 @@ static int wfs_mkdir(const char* path, mode_t mode) {
             return -ENOENT; // No such parent directory
         }
     }
+
     // Add entry to parent directory
     struct wfs_dentry *this_dentry = NULL;
     int new_block_index = parent_inode->size / sizeof(struct wfs_dentry);
     for (int i = 0; i < new_block_index; i++) {
-        struct wfs_dentry *dblock_ptr = ((char*) parent_inode) + parent_inode->blocks[i];
+        struct wfs_dentry *dblock_ptr = ((char*) superblock) + parent_inode->blocks[i];
         for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
             struct wfs_dentry *curr_dentry = dblock_ptr + j;
             if (curr_dentry->num == 0) {
@@ -246,7 +248,7 @@ static int wfs_mkdir(const char* path, mode_t mode) {
         if (this_dentry == NULL) {
             return -ENOSPC; // Insufficient disk space
         }
-        parent_inode->blocks[new_block_index] = this_dentry - (parent_inode->blocks + new_block_index);
+        parent_inode->blocks[new_block_index] = ((char*) this_dentry) - superblock;
         parent_inode->size += BLOCK_SIZE;
     }
 
@@ -274,9 +276,70 @@ static int wfs_unlink(const char* path) {
 
 static int wfs_rmdir(const char *path) {
     printf("Running wfs_rmdir\n");
-    // TODO: implement
+    // TODO: finish, test
+    struct wfs_inode *parent_inode;
+    char *dir_name = rindex(path, '/');
+    if (dir_name == NULL) {
+        // Parent is root directory
+        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+    }
+    else {
+        // Parent is a non-root directory, split path into parent path and new directory name
+        *dir_name = '\0';
+        dir_name++;
+        parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
+        if (parent_inode == NULL) {
+            return -ENOENT; // No such parent directory
+        }
+    }
 
-    return 0; // Return 0 on success
+    int block_count = parent_inode->size / sizeof(struct wfs_dentry);
+    for (int i = 0; i < block_count; i++) {
+        struct wfs_dentry *dblock_ptr = ((char*) superblock) + parent_inode->blocks[i];
+        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+            struct wfs_dentry *curr_dentry = dblock_ptr + j;
+            if (strcmp(dir_name, curr_dentry->name) == 0) {
+                // Found directory, clear inode and bits, remove directory entry
+                struct wfs_inode *this_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr + curr_dentry->num);
+                // We assume that the directory is already empty, so we can free all the dentries stored
+                int this_block_count = this_inode->size / sizeof(struct wfs_dentry);
+                for (int k = 0; k < this_block_count; k++) {
+                    int this_datablock_num; // TODO: get datablock number of this_inode->blocks[k] (it's not the dentry num)
+                    
+                    int datablock_byte = this_datablock_num / 8;
+                    int datablock_offset = this_datablock_num % 8;
+                    char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
+                    char bitmask = (char) (1 << (7 - datablock_offset));
+                    *this_bitmap &= ~bitmask;
+
+                    memset(((char*) superblock) + this_inode->blocks[k], 0, BLOCK_SIZE);
+                }
+                
+                // Clear bits in inode/data bitmaps
+                int inode_byte = this_inode->num / 8;
+                int inode_offset = this_inode->num % 8;
+                char *this_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr + inode_byte;
+                char bitmask = (char) (1 << (7 - inode_offset));
+                *this_bitmap &= ~bitmask;
+
+                int this_datablock_num; // TODO: get datablock number of this_inode->blocks[k] (it's not the dentry num)
+
+                int datablock_byte = curr_dentry->num / 8;
+                int datablock_offset = curr_dentry->num % 8;
+                this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
+                bitmask = (char) (1 << (7 - datablock_offset));
+                *this_bitmap &= ~bitmask;
+
+                // Clear inode, directory entry
+                memset(this_inode, 0, sizeof(struct wfs_inode));
+                memset(curr_dentry->name, 0, MAX_NAME);
+                
+                return 0; // Return 0 on success
+            }
+        }
+    }
+
+    return -ENOENT; // File or directory with same name exists // TODO: can a directory and a file share the same name?
 }
 
 static int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi) {
