@@ -9,7 +9,7 @@
 #include <sys/mman.h>
 #include <wasm32-wasi/__mode_t.h>
 
-int disk_fd;  			  // File descriptor
+int disk_fd;                      // File descriptor
 struct wfs_sb *superblock;  // Superblock
 
 // TODO: finish methods
@@ -22,7 +22,7 @@ struct wfs_inode *get_inode(int num) {
 // Get the data block number for the given data block address.
 // Returns the data block number, or -1 if the address is not in the DATA BLOCKS region.
 int get_data_block_num(void *data_block_addr) {
-	uintptr_t address_offset = (uintptr_t)data_block_addr - ((uintptr_t)superblock + superblock->d_blocks_ptr);
+        uintptr_t address_offset = (uintptr_t)data_block_addr - ((uintptr_t)superblock + superblock->d_blocks_ptr);
     if (address_offset >= superblock->num_data_blocks * BLOCK_SIZE) {
         return -1;  // The address is outside the range of data blocks
     }
@@ -85,7 +85,7 @@ int clear_data_blocks(struct wfs_inode *inode) {
 }
 
 struct wfs_inode *allocate_inode() {
-	// TODO: test
+        // TODO: test
     char *inode_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr;
     size_t bitmap_size = superblock->num_inodes >> 3; // size in bytes
     int inode_num = 0;
@@ -127,40 +127,40 @@ struct wfs_inode *allocate_inode() {
 }
 
 struct wfs_inode *find_inode_by_path(const char *path) {
-	// TODO: test
-	struct wfs_inode* current_inode = get_inode(0);
-	if (current_inode == NULL || path == NULL || path[0] == '\0' || path[0] != '/') {
-	    return NULL; // Invalid path or failed to load root inode
-	}
-	char* path_copy = strdup(path);
-	if (path_copy == NULL) return NULL;
-	char* token = strtok(path_copy, "/");
-	    while (token != NULL && current_inode != NULL) {
-	        int found = 0;
-	        // Iterate through directory entries in current inode
-	        for (int i = 0; i < D_BLOCK; i++) {
-	        	if (current_inode->blocks[i] == 0) {
-	                continue; // Skip empty block pointers
-	        	}
-	        	struct wfs_dentry* entries = (struct wfs_dentry*)((char*)superblock + superblock->d_blocks_ptr + current_inode->blocks[i] * BLOCK_SIZE);
-	        	for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
-	                if (entries[j].num != 0 && strcmp(entries[j].name, token) == 0) {
-	                    // Found the next inode in the path
-	                    current_inode = get_inode(entries[j].num);
-	                    found = 1;
-	                    break;
-	                }
-	            }
-	            if (found) break; // Stop searching if we've found the next inode
-	        }
-	        if (!found) { // If no entry matches token in current directory
-	            free(path_copy);
-	            return NULL;
-	        }
-	        token = strtok(NULL, "/");
-	    }
-	    free(path_copy);
-	    return current_inode;		
+        // TODO: test
+        struct wfs_inode* current_inode = get_inode(0);
+        if (current_inode == NULL || path == NULL || path[0] == '\0' || path[0] != '/') {
+            return NULL; // Invalid path or failed to load root inode
+        }
+        char* path_copy = strdup(path);
+        if (path_copy == NULL) return NULL;
+        char* token = strtok(path_copy, "/");
+            while (token != NULL && current_inode != NULL) {
+                int found = 0;
+                // Iterate through directory entries in current inode
+                for (int i = 0; i < D_BLOCK; i++) {
+                        if (current_inode->blocks[i] == 0) {
+                        continue; // Skip empty block pointers
+                        }
+                        struct wfs_dentry* entries = (struct wfs_dentry*)((char*)superblock + superblock->d_blocks_ptr + current_inode->blocks[i] * BLOCK_SIZE);
+                        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+                        if (entries[j].num != 0 && strcmp(entries[j].name, token) == 0) {
+                            // Found the next inode in the path
+                            current_inode = get_inode(entries[j].num);
+                            found = 1;
+                            break;
+                        }
+                    }
+                    if (found) break; // Stop searching if we've found the next inode
+                }
+                if (!found) { // If no entry matches token in current directory
+                    free(path_copy);
+                    return NULL;
+                }
+                token = strtok(NULL, "/");
+            }
+            free(path_copy);
+            return current_inode;
 }
 
 int allocate_block() {
@@ -507,7 +507,7 @@ static struct fuse_operations ops = {
 int main(int argc, char *argv[]) {
     // Initialize FUSE with specified operations
     // Filter argc and argv here and then pass it to fuse_main
-	// Usage: ./wfs disk_path [FUSE options] mount_point
+        // Usage: ./wfs disk_path [FUSE options] mount_point
     if (argc < 4) {
         printf("Usage: ./wfs disk_path [FUSE options] mount_point\n");
         return 1;
@@ -527,10 +527,10 @@ int main(int argc, char *argv[]) {
     printf("statbuf.st_size: %ld\n", statbuf.st_size); // TODO: debug
 
     // Get a pointer to the shared mmap memory
-	void *addr = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, disk_fd, 0);
-	close(disk_fd);
-	if (addr == (void*) -1) {
-		printf("Failed to mmap memory\n");
+        void *addr = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, disk_fd, 0);
+        close(disk_fd);
+        if (addr == (void*) -1) {
+                printf("Failed to mmap memory\n");
         return 1;
     }
     superblock = addr;
