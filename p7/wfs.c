@@ -28,6 +28,61 @@ int get_data_block_num(void *data_block_addr) {
     return output;
 }
 
+// Clear the data blocks stored in the given inode.
+// This function also accounts for indirect pointer(s), if necessary.
+// This function can be used for both regular files and directories.
+int clear_data_blocks(struct wfs_inode *inode) {
+    // TODO: implement
+    // Direct pointers
+    for (int i = 0; i < IND_BLOCK; i++) {
+        if (inode->blocks[i] == 0) {
+            return 0; // All data blocks cleared
+        }
+
+        // Clear data blocks, respective bits in data bitmap
+        int this_datablock_num = get_data_block_num(superblock + inode->blocks[i]);
+        int datablock_byte = this_datablock_num / 8;
+        int datablock_offset = this_datablock_num % 8;
+        char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
+        char bitmask = (char) (1 << (7 - datablock_offset));
+        *this_bitmap &= ~bitmask;
+
+        memset(((char*) superblock) + inode->blocks[i], 0, BLOCK_SIZE);
+    }
+
+    // Indirect pointer
+    if (inode->blocks[IND_BLOCK] != 0) {
+        off_t *pointer_block = (off_t*) (((char*) superblock) + inode->blocks[IND_BLOCK]);
+        for (int i = 0; i < BLOCK_SIZE / sizeof(off_t); i++) {
+            if (pointer_block[i] == 0) {
+                break; // All data blocks cleared
+            }
+
+            // Clear data blocks, respective bits in data bitmap
+            int this_datablock_num = get_data_block_num(superblock + pointer_block[i]);
+            int datablock_byte = this_datablock_num / 8;
+            int datablock_offset = this_datablock_num % 8;
+            char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
+            char bitmask = (char) (1 << (7 - datablock_offset));
+            *this_bitmap &= ~bitmask;
+
+            memset(((char*) superblock) + pointer_block[i], 0, BLOCK_SIZE);
+        }
+
+        // Free indirect pointer block
+        int this_datablock_num = get_data_block_num(pointer_block);
+        int datablock_byte = this_datablock_num / 8;
+        int datablock_offset = this_datablock_num % 8;
+        char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
+        char bitmask = (char) (1 << (7 - datablock_offset));
+        *this_bitmap &= ~bitmask;
+
+        memset(pointer_block, 0, BLOCK_SIZE);
+    }
+
+    return 0;
+}
+
 struct wfs_inode *allocate_inode() {
 	// TODO: test
     char *inode_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr;
@@ -166,7 +221,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
         parent_inode = get_inode(0);
     }
     else {
-        // Parent is a non-root directory, split path into parent path and new directory name
+        // Parent is a non-root directory, split path into parent path and new file name
         *new_name = '\0';
         new_name++;
         parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
@@ -286,9 +341,56 @@ static int wfs_mkdir(const char* path, mode_t mode) {
 
 static int wfs_unlink(const char* path) {
     printf("Running wfs_unlink\n");
-    // TODO: implement
+    // TODO: test
+    struct wfs_inode *parent_inode;
+    char *file_name = rindex(path, '/');
+    if (file_name == NULL) {
+        // Parent is root directory
+        parent_inode = get_inode(0);
+    }
+    else {
+        // Parent is a non-root directory, split path into parent path and unwanted file name
+        *file_name = '\0';
+        file_name++;
+        parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
+        if (parent_inode == NULL) {
+            return -ENOENT; // No such parent directory
+        }
+    }
 
-    return 0; // Return 0 on success
+    int block_count = parent_inode->size / sizeof(struct wfs_dentry);
+    for (int i = 0; i < block_count; i++) {
+        struct wfs_dentry *dblock_ptr = ((char*) superblock) + parent_inode->blocks[i];
+        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+            struct wfs_dentry *curr_dentry = dblock_ptr + j;
+            if (strcmp(file_name, curr_dentry->name) == 0) {
+                // Found file, clear data blocks and bits in data bitmap
+                struct wfs_inode *this_inode = get_inode(curr_dentry->num);
+                clear_data_blocks(this_inode);
+
+                // Clear bits in inode bitmap
+                int inode_byte = this_inode->num / 8;
+                int inode_offset = this_inode->num % 8;
+                char *this_bitmap = ((char*) superblock) + superblock->i_bitmap_ptr + inode_byte;
+                char bitmask = (char) (1 << (7 - inode_offset));
+                *this_bitmap &= ~bitmask;
+
+                // Clear inode
+                memset(this_inode, 0, sizeof(struct wfs_inode));
+
+                // Update parent inode
+                parent_inode->nlinks--;
+                time_t curr_time = time(NULL);
+                parent_inode->atim = curr_time;
+                parent_inode->mtim = curr_time;
+                parent_inode->ctim = curr_time;
+
+                return 0; // Return 0 on success
+            }
+        }
+    }
+
+    return -ENOENT; // No such file exists
 }
 
 static int wfs_rmdir(const char *path) {
@@ -301,7 +403,7 @@ static int wfs_rmdir(const char *path) {
         parent_inode = get_inode(0);
     }
     else {
-        // Parent is a non-root directory, split path into parent path and new directory name
+        // Parent is a non-root directory, split path into parent path and unwanted directory name
         *dir_name = '\0';
         dir_name++;
         parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
@@ -316,22 +418,10 @@ static int wfs_rmdir(const char *path) {
         for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
             struct wfs_dentry *curr_dentry = dblock_ptr + j;
             if (strcmp(dir_name, curr_dentry->name) == 0) {
-                // Found directory, clear inode and bits, remove directory entry
+                // Found directory, free all the dentries stored (we safely assume the directory is empty)
                 struct wfs_inode *this_inode = get_inode(curr_dentry->num);
-                // We assume that the directory is already empty, so we can free all the dentries stored
-                int this_block_count = this_inode->size / sizeof(struct wfs_dentry);
-                for (int k = 0; k < this_block_count; k++) {
-                    // Clear data blocks, respective bits in data bitmap
-                    int this_datablock_num = get_data_block_num(superblock + this_inode->blocks[k]);
-                    int datablock_byte = this_datablock_num / 8;
-                    int datablock_offset = this_datablock_num % 8;
-                    char *this_bitmap = ((char*) superblock) + superblock->d_bitmap_ptr + datablock_byte;
-                    char bitmask = (char) (1 << (7 - datablock_offset));
-                    *this_bitmap &= ~bitmask;
+                clear_data_blocks(this_inode);
 
-                    memset(((char*) superblock) + this_inode->blocks[k], 0, BLOCK_SIZE);
-                }
-                
                 // Clear bits in inode bitmap
                 int inode_byte = this_inode->num / 8;
                 int inode_offset = this_inode->num % 8;
@@ -339,9 +429,9 @@ static int wfs_rmdir(const char *path) {
                 char bitmask = (char) (1 << (7 - inode_offset));
                 *this_bitmap &= ~bitmask;
 
-                // Clear inode, directory entry
+                // Clear inode, parent dentry
                 memset(this_inode, 0, sizeof(struct wfs_inode));
-                memset(curr_dentry->name, 0, MAX_NAME);
+                memset(curr_dentry, 0, sizeof(struct wfs_dentry));
 
                 // Update parent inode
                 parent_inode->nlinks--;
@@ -355,7 +445,7 @@ static int wfs_rmdir(const char *path) {
         }
     }
 
-    return -ENOENT; // File or directory with same name exists // TODO: can a directory and a file share the same name?
+    return -ENOENT; // No such directory exists
 }
 
 static int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi) {
