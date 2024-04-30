@@ -7,6 +7,7 @@
 #include "wfs.h"
 #include <fuse.h>
 #include <sys/mman.h>
+#include <wasm32-wasi/__mode_t.h>
 
 int disk_fd;  			  // File descriptor
 struct wfs_sb *superblock;  // Superblock
@@ -149,7 +150,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
 
 static int wfs_mkdir(const char* path, mode_t mode) {
     printf("Running wfs_mkdir\n");
-    // TODO: implement, test
+    // TODO: test
     struct wfs_inode *parent_inode;
     char *new_name = rindex(path, '/');
     if (new_name == NULL) {
@@ -180,11 +181,22 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     }
     if (this_dentry == NULL) {
         // Need to allocate new directory block
-        this_dentry = allocate_dblock(); // TODO: implement
-        // TODO: finish, be sure to store offset in parent_inode->blocks[new_block_index] and update parent_inode->size (and atime, ctime, or mtime if applicable)
+        this_dentry = allocate_dentry(); // TODO: implement
+        parent_inode->blocks[new_block_index] = this_dentry - (parent_inode->blocks + new_block_index);
+        parent_inode->size += BLOCK_SIZE;
     }
 
-    // TODO: fill this_dentry, allocate and fill inode for that (see mkfs.c root directory initialization for reference)
+    // Update parent inode
+    parent_inode->nlinks++;
+    time_t curr_time = time(NULL);
+    parent_inode->mtim = curr_time;
+    parent_inode->ctim = curr_time;
+
+    // Fill this directory entry, allocate and fill inode
+    strcpy(this_dentry->name, new_name);
+    struct wfs_inode *this_inode = allocate_inode();
+    this_dentry->num = this_inode->num;
+    this_inode->mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
 
     return 0; // Return 0 on success
 }
