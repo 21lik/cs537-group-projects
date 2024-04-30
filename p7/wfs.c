@@ -143,7 +143,62 @@ static int wfs_getattr(const char *path, struct stat *stbuf) {
 
 static int wfs_mknod(const char* path, mode_t mode, dev_t rdev) {
     printf("Running wfs_mknod\n");
-    // TODO: implement
+    // TODO: test
+    struct wfs_inode *parent_inode;
+    char *new_name = rindex(path, '/');
+    if (new_name == NULL) {
+        // Parent is root directory
+        parent_inode = (struct wfs_inode*) (((char*) superblock) + superblock->i_blocks_ptr);
+    }
+    else {
+        // Parent is a non-root directory, split path into parent path and new directory name
+        *new_name = '\0';
+        new_name++;
+        parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
+        if (parent_inode == NULL) {
+            return -ENOENT; // No such parent directory
+        }
+    }
+    // Add entry to parent directory
+    struct wfs_dentry *this_dentry = NULL;
+    int new_block_index = parent_inode->size / sizeof(struct wfs_dentry);
+    for (int i = 0; i < new_block_index; i++) {
+        struct wfs_dentry *dblock_ptr = ((char*) parent_inode) + parent_inode->blocks[i];
+        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+            struct wfs_dentry *curr_dentry = dblock_ptr + j;
+            if (curr_dentry->num == 0) {
+                // Blank dentry found
+                this_dentry = curr_dentry;
+                break;
+            }
+            else if (strcmp(new_name, curr_dentry->name) == 0) {
+                return -EEXIST; // File or directory with same name exists // TODO: can a directory and a file share the same name?
+            }
+        }
+        if (this_dentry != NULL)
+            break;
+    }
+    if (this_dentry == NULL) {
+        // Need to allocate new directory block
+        this_dentry = allocate_dentry(); // TODO: implement
+        if (this_dentry == NULL) {
+            return -ENOSPC; // Insufficient disk space
+        }
+        parent_inode->blocks[new_block_index] = this_dentry - (parent_inode->blocks + new_block_index);
+        parent_inode->size += BLOCK_SIZE;
+    }
+
+    // Update parent inode
+    parent_inode->nlinks++;
+    time_t curr_time = time(NULL);
+    parent_inode->mtim = curr_time;
+    parent_inode->ctim = curr_time;
+
+    // Fill this directory entry, allocate and fill inode
+    strcpy(this_dentry->name, new_name);
+    struct wfs_inode *this_inode = allocate_inode();
+    this_dentry->num = this_inode->num;
+    this_inode->mode = S_IFREG | mode; // TODO: do we want S_IRWXU | S_IRWXG | S_IRWXO even if it's not specified in the mode parameter?
 
     return 0; // Return 0 on success
 }
@@ -162,6 +217,9 @@ static int wfs_mkdir(const char* path, mode_t mode) {
         *new_name = '\0';
         new_name++;
         parent_inode = find_inode_by_path(path, NULL); // TODO: be sure to revise end of function above, don't copy inode into argument memory if NULL
+        if (parent_inode == NULL) {
+            return -ENOENT; // No such parent directory
+        }
     }
     // Add entry to parent directory
     struct wfs_dentry *this_dentry = NULL;
@@ -175,6 +233,9 @@ static int wfs_mkdir(const char* path, mode_t mode) {
                 this_dentry = curr_dentry;
                 break;
             }
+            else if (strcmp(new_name, curr_dentry->name) == 0) {
+                return -EEXIST; // File or directory with same name exists // TODO: can a directory and a file share the same name?
+            }
         }
         if (this_dentry != NULL)
             break;
@@ -182,6 +243,9 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     if (this_dentry == NULL) {
         // Need to allocate new directory block
         this_dentry = allocate_dentry(); // TODO: implement
+        if (this_dentry == NULL) {
+            return -ENOSPC; // Insufficient disk space
+        }
         parent_inode->blocks[new_block_index] = this_dentry - (parent_inode->blocks + new_block_index);
         parent_inode->size += BLOCK_SIZE;
     }
@@ -196,7 +260,7 @@ static int wfs_mkdir(const char* path, mode_t mode) {
     strcpy(this_dentry->name, new_name);
     struct wfs_inode *this_inode = allocate_inode();
     this_dentry->num = this_inode->num;
-    this_inode->mode = S_IFDIR | mode;
+    this_inode->mode = S_IFDIR | mode; // TODO: do we want S_IRWXU | S_IRWXG | S_IRWXO even if it's not specified in the mode parameter?
 
     return 0; // Return 0 on success
 }
