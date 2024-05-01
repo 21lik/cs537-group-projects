@@ -97,9 +97,9 @@ int main(int argc, char *argv[]) {
     root_inode->atim = curr_time;
     root_inode->mtim = curr_time;
     root_inode->ctim = curr_time;
-    root_inode->blocks[0] = sb->d_blocks_ptr; // 0b10000000
+    // root_inode->blocks[0] = sb->d_blocks_ptr; // 0b10000000
     ((char *)(addr + sb->i_bitmap_ptr))[0] |= 0x01; // Root inode bitmap
-    ((char *)(addr + sb->d_bitmap_ptr))[0] |= 0x01; // Root block bitmap
+    // ((char *)(addr + sb->d_bitmap_ptr))[0] |= 0x01; // Root block bitmap
 
     // Free memory space
     munmap(addr, filesystem_size);

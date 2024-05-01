@@ -403,7 +403,37 @@ static int wfs_rmdir(const char *path) {
 // Read data from a file
 static int wfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
   printf("read called\n");
-  return 0;
+  char tmp_path[50];
+  struct wfs_inode* this_inode;
+  int inode_num = 0;
+  int parent_num = 0;
+  strcpy(tmp_path, path);
+
+  // get the inode
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
+  if (inode_num == -1) return -EEXIST;
+  this_inode = (struct wfs_inode*) (disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE);
+
+  // Read data blocks in file
+  int block_num = offset / BLOCK_SIZE, bytes_read = 0;
+  size_t effective_file_size = offset >= this_inode->size ? 0 : this_inode->size - offset;
+
+  for (size_t bytes_left = size > effective_file_size ? effective_file_size : size; bytes_left > 0;) {
+    int bytes_to_read = BLOCK_SIZE > bytes_left ? bytes_left : BLOCK_SIZE;
+    char *this_data_block;
+    if (block_num >= IND_BLOCK) {
+      // Indirect pointer
+      this_data_block = disk + this_inode->blocks[IND_BLOCK] + (block_num - IND_BLOCK) * BLOCK_SIZE;
+    }
+    else {
+      // Direct pointer
+      this_data_block = disk + this_inode->blocks[block_num];
+    }
+    memcpy(buf + bytes_read, this_data_block, bytes_to_read);
+    bytes_read += bytes_to_read;
+    bytes_left -= bytes_to_read;
+  }
+  return bytes_read;
 }
 
 // Write data to an OPEN file
