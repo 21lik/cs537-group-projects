@@ -10,13 +10,18 @@
 
 char* disk; // file backed mmap
 struct wfs_sb* sb;
+int dentry_loc;
 
-int search_dentry(int offset, char *name) {
+int find_dentry(int offset, char *name) {
   struct wfs_dentry dentry;
   int found = 0;
-  for (int i = 0; i < sizeof(struct wfs_dentry); i++) {
+  for (int i = 0; i < (int)sizeof(struct wfs_dentry); i++) {
     memcpy(&dentry, disk + offset + i * sizeof(struct wfs_dentry), sizeof(struct wfs_dentry));
-    if (strcmp(dentry.name, name) == 0) return dentry.num;
+    // find this name
+    if (strcmp(dentry.name, name) == 0) {
+      dentry_loc = i;
+      return dentry.num;
+    }
     if(dentry.num > 0) found = 1;
   }
   if(found != 1) return -2;
@@ -34,7 +39,7 @@ void find_inode_number_by_path(char *path, int *parent_num, int *inode_num) {
 
         int found = -1;
         for (int i = 0; i <= D_BLOCK; i++) {
-            int i_num = search_dentry(inode.blocks[i], name);
+            int i_num = find_dentry(inode.blocks[i], name);
             if (i_num > 0) {
                 found = i_num;
                 break;
@@ -75,14 +80,14 @@ int allocate_block(size_t addr, int size) {
 }
 
 static int wfs_getattr(const char *path, struct stat *stbuf) {
-  printf("getattr called on path %s\n", path);
+  printf("getattr called\n");
 
-  char tmp[30];
-  strcpy(tmp, path);
+  char tmp_path[50];
+  strcpy(tmp_path, path);
   int inode_num = 0;
   int parent_num = 0;
 
-  find_inode_number_by_path(tmp, &parent_num, &inode_num);
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
 
   // check if file exists
   if (inode_num < 0) return -ENOENT;
@@ -106,24 +111,25 @@ static int wfs_getattr(const char *path, struct stat *stbuf) {
   return 0; // Return 0 on success
 }
 
-static int wfs_mknod(const char *path, mode_t mode, dev_t dev) {
-  printf("mknod called on path %s\n", path);
+static int wfs_mknod(const char *path, mode_t mode, dev_t rdev) {
+  printf("mknod called\n");
 
-  (void) dev;
-  char tmp[50], name[50];
-  struct wfs_inode inode;
+  (void) rdev;
+  char tmp_path[50];
+  char name[50];
+  struct wfs_inode inode = {0};
   struct wfs_inode* parent_inode;
   int parent_num = 0;
   int inode_num = 0;
 
-  strcpy(tmp, path);
-  find_inode_number_by_path(tmp, &parent_num, &inode_num);
+  strcpy(tmp_path, path);
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
   if (inode_num != -1) return -EEXIST;
-  strcpy(tmp, path);
-  char *new_tmp = strtok(tmp, "/");
-  while (new_tmp != NULL){
-      strcpy(name, new_tmp);
-      new_tmp = strtok(NULL, "/");
+  strcpy(tmp_path, path);
+  char *new_tmp_path = strtok(tmp_path, "/");
+  while (new_tmp_path != NULL){
+      strcpy(name, new_tmp_path);
+      new_tmp_path = strtok(NULL, "/");
   }
 
   // create inode
@@ -144,9 +150,7 @@ static int wfs_mknod(const char *path, mode_t mode, dev_t dev) {
   for (int i = 0; i <= D_BLOCK; i++) {
     if(parent_inode->blocks[i] == 0) {
       int new_block = allocate_block(sb->d_bitmap_ptr, sb->num_data_blocks);
-      if (new_block == -1) {
-        return -ENOSPC;
-      }
+      if (new_block == -1) return -ENOSPC;
       parent_inode->blocks[i] = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
 
       int row = new_block / 32;
@@ -157,7 +161,7 @@ static int wfs_mknod(const char *path, mode_t mode, dev_t dev) {
       memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
     }
 
-    for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+    for (int j = 0; j < (int)(BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
       struct wfs_dentry* dentry = (struct wfs_dentry*) (disk + parent_inode->blocks[i] + j * sizeof(struct wfs_dentry));
       if (dentry->num == 0) {
         strcpy(dentry->name, name);
@@ -180,23 +184,24 @@ static int wfs_mknod(const char *path, mode_t mode, dev_t dev) {
 }
 
 static int wfs_mkdir(const char *path, mode_t mode) {
-  printf("mkdir called on path %s\n", path);
+  printf("mkdir called\n");
 
-  char tmp[30], name[30];
+  char tmp_path[50];
+  char name[50];
   struct wfs_inode inode = {0};
   struct wfs_inode* parent_inode;
   int parent_num = 0;
   int inode_num = 0;
 
-  strcpy(tmp, path);
-  find_inode_number_by_path(tmp, &parent_num, &inode_num);
+  strcpy(tmp_path, path);
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
   if (inode_num != -1) return -EEXIST;
 
-  strcpy(tmp, path);
-  char *new_tmp = strtok(tmp, "/");
-  while (new_tmp != NULL){
-      strcpy(name, new_tmp);
-      new_tmp = strtok(NULL, "/");
+  strcpy(tmp_path, path);
+  char *new_tmp_path = strtok(tmp_path, "/");
+  while (new_tmp_path != NULL){
+      strcpy(name, new_tmp_path);
+      new_tmp_path = strtok(NULL, "/");
   }
 
   // create inode
@@ -228,7 +233,7 @@ static int wfs_mkdir(const char *path, mode_t mode) {
       memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
     }
 
-    for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+    for (int j = 0; j < (int)(BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
       struct wfs_dentry* dentry = (struct wfs_dentry*) (disk + parent_inode->blocks[i] + j * sizeof(struct wfs_dentry));
       if (dentry->num == 0) {
         strcpy(dentry->name, name);
@@ -252,31 +257,186 @@ static int wfs_mkdir(const char *path, mode_t mode) {
 
 // Remove a file
 static int wfs_unlink(const char *path) {
-  printf("unlink called on path %s\n", path);
-  return 0; // Return 0 on success
+    printf("unlink called\n");
+    char tmp_path[50], name[50];
+    int inode_num = 0;
+    int parent_num = 0;
+    strcpy(tmp_path, path);
+
+    // get the inode
+    find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
+    if (inode_num == -1) return -EEXIST;
+
+    // update the parent
+    size_t addr = sb->i_blocks_ptr + parent_num * BLOCK_SIZE;
+    struct wfs_inode* parent_inode = (struct wfs_inode*)(disk + addr);
+
+    strcpy(tmp_path, path);
+    char *new_tmp_path = strtok(tmp_path, "/");
+    while (new_tmp_path != NULL){
+        strcpy(name, new_tmp_path);
+        new_tmp_path = strtok(NULL, "/");
+    }
+
+    for (int i = 0; i <= D_BLOCK; i++) {
+        if(parent_inode->blocks[i] == 0) continue;
+        int j = find_dentry(parent_inode->blocks[i], name);
+        if (j > -1) {
+            struct wfs_dentry* dentry = (struct wfs_dentry*)(disk + parent_inode->blocks[i] + dentry_loc * sizeof(struct wfs_dentry));
+            memset(dentry, 0, sizeof(struct wfs_dentry));
+            break;
+        }
+    }
+
+    // update inode
+    addr = sb->i_blocks_ptr + inode_num * BLOCK_SIZE;
+    struct wfs_inode* inode = (struct wfs_inode*)(disk + addr);
+    inode->nlinks -= 1;
+    if (inode->nlinks > 0) return 0;
+
+    // remove the file
+    for (int i = 0; i <= inode->size / BLOCK_SIZE; i++) {
+        int data_block_addr = inode->blocks[i];
+        if (i > D_BLOCK) { // beyond direct blocks
+            if (inode->blocks[IND_BLOCK] == 0) {
+                continue;
+            }
+            memcpy(&data_block_addr, disk + inode->blocks[IND_BLOCK] + (i - IND_BLOCK) * sizeof(int), sizeof(int));
+        }
+
+        if(data_block_addr == 0) continue;
+        memset(disk + data_block_addr, 0, BLOCK_SIZE);
+        int row = ((data_block_addr - sb->d_blocks_ptr) / BLOCK_SIZE) / 32;
+        int col = ((data_block_addr - sb->d_blocks_ptr) / BLOCK_SIZE) % 32;
+        int old, new;
+        memcpy(&old, disk + sb->d_bitmap_ptr + row * sizeof(int), sizeof(int));
+        new = old ^ (1 << col);
+        memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
+    }
+
+    memset(inode, 0, BLOCK_SIZE);
+    int row = inode_num / 32;
+    int col = inode_num % 32;
+    int old, new;
+    memcpy(&old, disk + sb->i_bitmap_ptr + row * sizeof(int), sizeof(int));
+    new = old ^ (1 << col);
+    memcpy(disk + sb->i_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
+
+    return 0; // Return 0 on success
 }
 
 // Remove a directory
 static int wfs_rmdir(const char *path) {
-  printf("rmdir called on path %s\n", path);
+  printf("rmdir called\n");
+
+  char tmp_path[50];
+  char name[50];
+  struct wfs_inode* inode;
+  size_t addr;
+  strcpy(tmp_path, path);
+
+  // get the inode of the to-be-removed-file
+  int inode_num;
+  int parent_num;
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
+  if (inode_num == -1) return -EEXIST;
+
+  strcpy(tmp_path, path);
+  char *new_tmp_path = strtok(tmp_path, "/");
+  while (new_tmp_path != NULL){
+      strcpy(name, new_tmp_path);
+      new_tmp_path = strtok(NULL, "/");
+  }
+
+  // get inode
+  addr = sb->i_blocks_ptr + inode_num * BLOCK_SIZE;
+  inode = (struct wfs_inode*) (disk + addr);
+
+  // check if the directory is empty
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if(inode->blocks[i] == 0) continue;
+
+    // iterate over dentries in data block
+    for (int j = 0; j < (int)(BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
+      struct wfs_dentry* dentry = (struct wfs_dentry*) (disk + inode->blocks[i] + j * sizeof(struct wfs_dentry));
+      if (dentry->num > 0) return -ENOTEMPTY;
+    }
+    memset(disk + inode->blocks[i], 0, BLOCK_SIZE);
+    int row = ((inode->blocks[i] - sb->d_blocks_ptr) / BLOCK_SIZE) / 32;
+    int col = ((inode->blocks[i] - sb->d_blocks_ptr) / BLOCK_SIZE) % 32;
+    int old, new;
+    memcpy(&old, disk + sb->d_bitmap_ptr + row * sizeof(int), sizeof(int));
+    new = old ^ (1 << col);
+    memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
+  }
+
+  // load parent inode
+  addr = sb->i_blocks_ptr + parent_num * BLOCK_SIZE;
+  struct wfs_inode* parent_inode = (struct wfs_inode*) (disk + addr);
+
+  // now update parent inode
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if(parent_inode->blocks[i] == 0) continue;
+
+    // search for the dentry of the deleted file
+    int j = find_dentry(parent_inode->blocks[i], name);
+    if (j > -1) {
+      struct wfs_dentry* dentry = (struct wfs_dentry*) (disk + parent_inode->blocks[i] + dentry_loc * sizeof(struct wfs_dentry));
+      memset(dentry, 0, sizeof(struct wfs_dentry));
+      break;
+    }
+  }
+
+  // zero-out inode block, and flip the bit in bitmap
+  memset(inode, 0, BLOCK_SIZE);
+  // flip_bit(inode_numbers[1], sb->i_bitmap_ptr);
+  int row = inode_num / 32;
+  int col = inode_num % 32;
+  int old, new;
+  memcpy(&old, disk + sb->i_bitmap_ptr + row * sizeof(int), sizeof(int));
+  new = old ^ (1 << col);
+  memcpy(disk + sb->i_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
+
   return 0; // Return 0 on success
 }
 
 // Read data from a file
 static int wfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-  printf("read called on path %s\n", path);
+  printf("read called\n");
   return 0;
 }
 
 // Write data to an OPEN file
 static int wfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-  printf("write called on path %s\n", path);
+  printf("write called\n");
   return 0; // Return # of bytes written on success
 }
 
 // Read directory
 static int wfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
-  printf("readdir called on path %s\n", path);
+  printf("readdir called\n");
+  struct wfs_dentry dentry;
+  struct wfs_inode inode;
+  char tmp_path[30];
+  strcpy(tmp_path, path);
+
+  filler(buf, ".", NULL, 0);
+  filler(buf, "..", NULL, 0);
+
+  int inode_num;
+  int parent_num;
+  find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
+  memcpy(&inode, disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE, sizeof(struct wfs_inode));
+  for (int i = 0; i <= D_BLOCK; i++) {
+    if(inode.blocks[i] == 0) continue;
+    for (int j = 0; j < (int)(BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
+      memcpy(&dentry, disk + inode.blocks[i] + j * sizeof(struct wfs_dentry), sizeof(struct wfs_dentry));
+      if (dentry.num > 0) {
+        filler(buf, dentry.name, NULL, 0);
+      }
+    }
+  }
+
   return 0; // Return 0 on success
 }
 
