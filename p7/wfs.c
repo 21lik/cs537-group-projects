@@ -421,7 +421,7 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
   size_t effective_file_size = offset >= this_inode->size ? 0 : this_inode->size - offset;
 
   for (size_t bytes_left = size > effective_file_size ? effective_file_size : size; bytes_left > 0;) {
-    int bytes_to_read = BLOCK_SIZE > bytes_left ? bytes_left : BLOCK_SIZE;
+    int bytes_to_read = MIN(BLOCK_SIZE, bytes_left);
     char *this_data_block;
     if (block_num >= IND_BLOCK) {
       // Indirect pointer
