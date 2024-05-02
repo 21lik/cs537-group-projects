@@ -8,6 +8,8 @@
 #include "wfs.h"
 #include <fuse.h>
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 char* disk; // file backed mmap
 struct wfs_sb* sb;
 int dentry_loc;
@@ -438,8 +440,74 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
 
 // Write data to an OPEN file
 static int wfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-  printf("write called\n");
-  return 0; // Return # of bytes written on success
+    printf("write called on path %s\n", path);
+
+    // Avoid unused parameter compiler warning
+    (void) fi;
+
+    int parent_num = 0, inode_num = 0;
+    char tmp_path[50];
+    strcpy(tmp_path, path);
+    find_inode_number_by_path(tmp_path, &parent_num, &inode_num);
+
+    if (inode_num == -1) {
+        return -ENOENT;  // No such file
+    }
+
+    struct wfs_inode *inode = (struct wfs_inode*)(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE);
+    int bytes_written = 0;
+    size_t block_index = offset / BLOCK_SIZE;
+    size_t block_offset = offset % BLOCK_SIZE;
+
+    while (size > 0 && block_index < D_BLOCK) {
+        size_t block_physical_addr;
+        if (inode->blocks[block_index] == 0) {  // Block not allocated
+            int new_block = allocate_block(sb->d_bitmap_ptr, sb->num_data_blocks);
+            if (new_block == -1) {
+                return -ENOSPC;  // No space left
+            }
+            inode->blocks[block_index] = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
+
+            int row = new_block / 32;
+            int col = new_block % 32;
+            int old_bit, new_bit;
+            memcpy(&old_bit, disk + sb->d_bitmap_ptr + row * sizeof(int), sizeof(int));
+            new_bit = old_bit | (1 << col);
+            memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new_bit, sizeof(int));
+        }
+        block_physical_addr = inode->blocks[block_index];
+
+        size_t space_in_block = BLOCK_SIZE - block_offset;
+        size_t bytes_to_write = (size < space_in_block) ? size : space_in_block;
+        memcpy(disk + block_physical_addr + block_offset, buf + bytes_written, bytes_to_write);
+
+        // Update counters
+        bytes_written += bytes_to_write;
+        size -= bytes_to_write;
+        block_index++;
+        block_offset = 0;  // After the first block, we write from the start of the next blocks
+    }
+
+    if (size > 0) {
+        // If there is still data to write but no blocks available, return an error
+        return -EFBIG;
+    }
+
+    // Update file size if necessary
+    size_t file_end_offset = offset + bytes_written;
+    if (inode->size < file_end_offset) {
+        inode->size = file_end_offset;
+    }
+
+    // Update inode times
+    time_t current_time = time(NULL);
+    inode->mtim = current_time;
+    inode->ctim = current_time;
+
+    // Write the inode back to disk
+    memcpy(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE, inode, sizeof(struct wfs_inode));
+
+    return bytes_written;  // Return the number of bytes written
 }
 
 // Read directory
