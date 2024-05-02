@@ -420,12 +420,13 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
   int block_num = offset / BLOCK_SIZE, bytes_read = 0;
   size_t effective_file_size = offset >= this_inode->size ? 0 : this_inode->size - offset;
 
-  for (size_t bytes_left = size > effective_file_size ? effective_file_size : size; bytes_left > 0;) {
+  for (size_t bytes_left = MIN(size, effective_file_size); bytes_left > 0; block_num++) {
     int bytes_to_read = MIN(BLOCK_SIZE, bytes_left);
     char *this_data_block;
     if (block_num >= IND_BLOCK) {
       // Indirect pointer
-      this_data_block = disk + *(((off_t*) (disk + this_inode->blocks[IND_BLOCK])) + (block_num - IND_BLOCK));
+      off_t *offset_address = (((off_t*) (disk + this_inode->blocks[IND_BLOCK])) + (block_num - IND_BLOCK));
+      this_data_block = disk + *offset_address;
     }
     else {
       // Direct pointer
@@ -555,7 +556,6 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
             size -= bytes_to_write;
             block_index++;
             block_offset = 0;  // After the first block, we write from the start of the next blocks
-            
         }
     }
 
@@ -646,8 +646,6 @@ int main(int argc, char *argv[]) {
     struct stat statbuf;
     stat(argv[1], &statbuf);
 
-    printf("statbuf.st_size: %ld\n", statbuf.st_size); // TODO: debug
-
     // Get a pointer to the shared mmap memory
     disk = mmap(NULL, statbuf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
@@ -656,12 +654,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     sb = (struct wfs_sb*) disk;
+
     // Adjust the arguments for fuse_main
     argv[1] = argv[argc - 1];
     argv[argc - 1] = NULL;
     argc--;
-    printf("Calling fuse_main\n"); // TODO: debug
-    int output = fuse_main(argc, argv, &ops, NULL); // TODO: make sure argc and argv passed are correct
-    printf("output=%d\n", output);
-    return output;
+
+    return fuse_main(argc, argv, &ops, NULL);
 }
