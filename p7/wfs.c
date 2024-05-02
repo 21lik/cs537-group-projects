@@ -17,7 +17,7 @@ int dentry_loc;
 int find_dentry(int offset, char *name) {
   struct wfs_dentry dentry;
   int found = 0;
-  for (int i = 0; i < (int)sizeof(struct wfs_dentry); i++) {
+  for (int i = 0; i < sizeof(struct wfs_dentry); i++) {
     memcpy(&dentry, disk + offset + i * sizeof(struct wfs_dentry), sizeof(struct wfs_dentry));
     // find this name
     if (strcmp(dentry.name, name) == 0) {
@@ -163,7 +163,7 @@ static int wfs_mknod(const char *path, mode_t mode, dev_t rdev) {
       memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new, sizeof(int));
     }
 
-    for (int j = 0; j < (int)(BLOCK_SIZE / sizeof(struct wfs_dentry)); j++) {
+    for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
       struct wfs_dentry* dentry = (struct wfs_dentry*) (disk + parent_inode->blocks[i] + j * sizeof(struct wfs_dentry));
       if (dentry->num == 0) {
         strcpy(dentry->name, name);
@@ -425,7 +425,7 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
     char *this_data_block;
     if (block_num >= IND_BLOCK) {
       // Indirect pointer
-      this_data_block = disk + this_inode->blocks[IND_BLOCK] + (block_num - IND_BLOCK) * BLOCK_SIZE;
+      this_data_block = disk + *(((off_t*) (disk + this_inode->blocks[IND_BLOCK])) + (block_num - IND_BLOCK));
     }
     else {
       // Direct pointer
@@ -435,15 +435,18 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
     bytes_read += bytes_to_read;
     bytes_left -= bytes_to_read;
   }
+
+  // Update inode access/change times
+  time_t curr_time = time(NULL);
+  this_inode->atim = curr_time;
+  this_inode->ctim = curr_time;
+
   return bytes_read;
 }
 
 // Write data to an OPEN file
 static int wfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     printf("write called on path %s\n", path);
-
-    // Avoid unused parameter compiler warning
-    (void) fi;
 
     int parent_num = 0, inode_num = 0;
     char tmp_path[50];
@@ -457,9 +460,10 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
     struct wfs_inode *inode = (struct wfs_inode*)(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE);
     int bytes_written = 0;
     size_t block_index = offset / BLOCK_SIZE;
-    size_t block_offset = offset % BLOCK_SIZE;
+    int block_offset = offset % BLOCK_SIZE;
 
-    while (size > 0 && block_index < D_BLOCK) {
+    // Direct blocks
+    while (size > 0 && block_index < IND_BLOCK) {
         size_t block_physical_addr;
         if (inode->blocks[block_index] == 0) {  // Block not allocated
             int new_block = allocate_block(sb->d_bitmap_ptr, sb->num_data_blocks);
@@ -478,7 +482,7 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
         block_physical_addr = inode->blocks[block_index];
 
         size_t space_in_block = BLOCK_SIZE - block_offset;
-        size_t bytes_to_write = (size < space_in_block) ? size : space_in_block;
+        size_t bytes_to_write = MIN(size, space_in_block);
         memcpy(disk + block_physical_addr + block_offset, buf + bytes_written, bytes_to_write);
 
         // Update counters
@@ -488,9 +492,81 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
         block_offset = 0;  // After the first block, we write from the start of the next blocks
     }
 
+    // Indirect block write
+    if (size > 0) {
+        if (inode->blocks[IND_BLOCK] == 0) {
+            // Allocate indirect pointer block if necessary
+            int new_block = allocate_block(sb->d_bitmap_ptr, sb->num_data_blocks);
+            if (new_block == -1) {
+                // Update file size if necessary
+                size_t file_end_offset = offset + bytes_written;
+                if (inode->size < file_end_offset) {
+                    inode->size = file_end_offset;
+                }
+                return -ENOSPC;  // No space left
+            }
+            inode->blocks[IND_BLOCK] = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
+
+            int row = new_block / 32;
+            int col = new_block % 32;
+            int old_bit, new_bit;
+            memcpy(&old_bit, disk + sb->d_bitmap_ptr + row * sizeof(int), sizeof(int));
+            new_bit = old_bit | (1 << col);
+            memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new_bit, sizeof(int));
+        }
+
+        // Iterate through each pointer in the indirect pointer block until write complete or file is full.
+        // Note that at the start of the for loop, we don't reset block_index to 0, but decrement it by IND_BLOCK.
+        // This handles cases where we have a very large offset.
+        for (block_index -= IND_BLOCK; size > 0 && block_index < BLOCK_SIZE / sizeof(off_t); block_index++) {
+            off_t block_physical_addr;
+
+            off_t *offset_address = (((off_t*) (disk + inode->blocks[IND_BLOCK])) + block_index);
+            if (*offset_address == 0) {  // Block not allocated
+                int new_block = allocate_block(sb->d_bitmap_ptr, sb->num_data_blocks);
+                if (new_block == -1) {
+                    // Update file size if necessary
+                    size_t file_end_offset = offset + bytes_written;
+                    if (inode->size < file_end_offset) {
+                        inode->size = file_end_offset;
+                    }
+                    return -ENOSPC;  // No space left
+                }
+                *offset_address = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
+
+                int row = new_block / 32;
+                int col = new_block % 32;
+                int old_bit, new_bit;
+                memcpy(&old_bit, disk + sb->d_bitmap_ptr + row * sizeof(int), sizeof(int));
+                new_bit = old_bit | (1 << col);
+                memcpy(disk + sb->d_bitmap_ptr + row * sizeof(int), &new_bit, sizeof(int));
+            }
+            
+            block_physical_addr = *offset_address;
+
+            size_t space_in_block = BLOCK_SIZE - block_offset;
+            size_t bytes_to_write = MIN(size, space_in_block);
+            
+            memcpy(disk + block_physical_addr + block_offset, buf + bytes_written, bytes_to_write);
+
+
+            // Update counters
+            bytes_written += bytes_to_write;
+            size -= bytes_to_write;
+            block_index++;
+            block_offset = 0;  // After the first block, we write from the start of the next blocks
+            
+        }
+    }
+
     if (size > 0) {
         // If there is still data to write but no blocks available, return an error
-        return -EFBIG;
+        // Update file size if necessary
+        size_t file_end_offset = offset + bytes_written;
+        if (inode->size < file_end_offset) {
+            inode->size = file_end_offset;
+        }
+        return -ENOSPC;
     }
 
     // Update file size if necessary
@@ -501,11 +577,12 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
 
     // Update inode times
     time_t current_time = time(NULL);
+    inode->atim = current_time;
     inode->mtim = current_time;
     inode->ctim = current_time;
 
     // Write the inode back to disk
-    memcpy(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE, inode, sizeof(struct wfs_inode));
+    // memcpy(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE, inode, sizeof(struct wfs_inode)); // TODO: shouldn't be necessary
 
     return bytes_written;  // Return the number of bytes written
 }
