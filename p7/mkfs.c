@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
         return 1; // TODO: return or exit?
     }
 
-    memset(addr, 0, filesystem_size); // Clear disk image file // TODO: is this necessary?
+    memset(addr, 0, filesystem_size); // Clear disk image file
 
     // Write superblock
     struct wfs_sb *sb = (struct wfs_sb *) addr;
@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
     root_inode->mtim = curr_time;
     root_inode->ctim = curr_time;
     // root_inode->blocks[0] = sb->d_blocks_ptr; // 0b10000000
-    ((char *)(addr + sb->i_bitmap_ptr))[0] |= 0x01; // Root inode bitmap
+    *((int*) (addr + sb->i_bitmap_ptr)) |= 0x01; // Root inode bitmap
     // ((char *)(addr + sb->d_bitmap_ptr))[0] |= 0x01; // Root block bitmap
 
     // Free memory space
