@@ -402,11 +402,13 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
   this_inode = (struct wfs_inode*) (disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE);
 
   // Read data blocks in file
-  int block_num = offset / BLOCK_SIZE, bytes_read = 0;
+  int block_num = offset / BLOCK_SIZE;
+  int block_offset = offset % BLOCK_SIZE;
+  int bytes_read = 0;
   size_t effective_file_size = offset >= this_inode->size ? 0 : this_inode->size - offset;
 
   for (size_t bytes_left = MIN(size, effective_file_size); bytes_left > 0; block_num++) {
-    int bytes_to_read = MIN(BLOCK_SIZE, bytes_left);
+    int bytes_to_read = MIN(BLOCK_SIZE - block_offset, bytes_left);
     char *this_data_block;
     if (block_num >= IND_BLOCK) {
       // Indirect pointer
@@ -417,9 +419,11 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
       // Direct pointer
       this_data_block = disk + this_inode->blocks[block_num];
     }
-    memcpy(buf + bytes_read, this_data_block, bytes_to_read);
+    memcpy(buf + bytes_read, this_data_block + block_offset, bytes_to_read);
     bytes_read += bytes_to_read;
     bytes_left -= bytes_to_read;
+
+    block_offset = 0; // set offset to 0 for subsequent blocks
   }
 
   // Update inode access/change times
