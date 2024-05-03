@@ -109,6 +109,16 @@ int flip_bit_in_bitmap(off_t offset, int block_num)
   return 0;
 }
 
+time_t update_inode_times(struct wfs_inode *inode, int modified)
+{
+  time_t curr_time = time(NULL);
+  inode->atim = curr_time;
+  inode->ctim = curr_time;
+  if (modified)
+    inode->mtim = curr_time;
+  return curr_time;
+}
+
 static int wfs_getattr(const char *path, struct stat *stbuf)
 {
   printf("getattr called\n");
@@ -329,6 +339,7 @@ static int wfs_unlink(const char *path)
   }
 
   parent_inode->nlinks--;
+  update_inode_times(parent_inode, 1);
 
   // update inode
   addr = sb->i_blocks_ptr + inode_num * BLOCK_SIZE;
@@ -352,15 +363,14 @@ static int wfs_unlink(const char *path)
 
     if (data_block_addr == 0)
       continue;
-    memset(disk + data_block_addr, 0, BLOCK_SIZE);
 
     int data_block_number = ((data_block_addr - sb->d_blocks_ptr) / BLOCK_SIZE);
     flip_bit_in_bitmap(sb->d_bitmap_ptr, data_block_number);
+    memset(disk + data_block_addr, 0, BLOCK_SIZE);
   }
 
-  memset(inode, 0, BLOCK_SIZE);
-
   flip_bit_in_bitmap(sb->i_bitmap_ptr, inode_num);
+  memset(inode, 0, BLOCK_SIZE);
 
   return 0; // Return 0 on success
 }
@@ -408,10 +418,10 @@ static int wfs_rmdir(const char *path)
       if (dentry->num > 0)
         return -ENOTEMPTY;
     }
-    memset(disk + inode->blocks[i], 0, BLOCK_SIZE);
 
     int data_block_number = (inode->blocks[i] - sb->d_blocks_ptr) / BLOCK_SIZE;
     flip_bit_in_bitmap(sb->d_bitmap_ptr, data_block_number);
+    memset(disk + inode->blocks[i], 0, BLOCK_SIZE);
   }
 
   // load parent inode
@@ -434,12 +444,11 @@ static int wfs_rmdir(const char *path)
     }
   }
   parent_inode->nlinks--;
+  update_inode_times(parent_inode, 1);
 
   // zero-out inode block, and flip the bit in bitmap
-  memset(inode, 0, BLOCK_SIZE);
-
-  // flip_bit(inode_numbers[1], sb->i_bitmap_ptr);
   flip_bit_in_bitmap(sb->i_bitmap_ptr, inode_num);
+  memset(inode, 0, BLOCK_SIZE);
 
   return 0; // Return 0 on success
 }
@@ -489,9 +498,7 @@ static int wfs_read(const char *path, char *buf, size_t size, off_t offset, stru
   }
 
   // Update inode access/change times
-  time_t curr_time = time(NULL);
-  this_inode->atim = curr_time;
-  this_inode->ctim = curr_time;
+  update_inode_times(this_inode, 0);
 
   return bytes_read;
 }
@@ -533,8 +540,11 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
           {
             inode->size = file_end_offset;
           }
+          update_inode_times(inode, 1);
           return bytes_written;
         }
+        update_inode_times(inode, 0);
+        return -ENOSPC;
       }
       inode->blocks[block_index] = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
 
@@ -572,8 +582,10 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
           {
             inode->size = file_end_offset;
           }
+          update_inode_times(inode, 1);
           return bytes_written;
         }
+        update_inode_times(inode, 0);
         return -ENOSPC;
       }
       inode->blocks[IND_BLOCK] = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
@@ -602,7 +614,9 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
               inode->size = file_end_offset;
             }
             return bytes_written;
+            update_inode_times(inode, 1);
           }
+          update_inode_times(inode, 0);
           return -ENOSPC;
         }
         *offset_address = sb->d_blocks_ptr + new_block * BLOCK_SIZE;
@@ -637,6 +651,7 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
       {
         inode->size = file_end_offset;
       }
+      update_inode_times(inode, 1);
       return bytes_written;
     }
     return -ENOSPC;
@@ -650,10 +665,7 @@ static int wfs_write(const char *path, const char *buf, size_t size, off_t offse
   }
 
   // Update inode times
-  time_t current_time = time(NULL);
-  inode->atim = current_time;
-  inode->mtim = current_time;
-  inode->ctim = current_time;
+  update_inode_times(inode, 1);
 
   // Write the inode back to disk
   // memcpy(disk + sb->i_blocks_ptr + inode_num * BLOCK_SIZE, inode, sizeof(struct wfs_inode)); // TODO: shouldn't be necessary
